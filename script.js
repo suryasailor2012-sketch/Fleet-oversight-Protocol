@@ -212,7 +212,11 @@ async function loadRemoteState() {
     if (!response.ok) return false;
     const saved = await response.json();
     const hasRemoteState = Array.isArray(saved.reports) && Array.isArray(saved.claims) && Array.isArray(saved.drydockPlans);
-    if (!hasRemoteState) return false;
+    if (!hasRemoteState) {
+      remoteStateAvailable = true;
+      await saveRemoteState({ reports, claims, drydockPlans });
+      return true;
+    }
     reports.splice(0, reports.length, ...saved.reports);
     claims = saved.claims;
     drydockPlans = saved.drydockPlans;
