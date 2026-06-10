@@ -179,6 +179,7 @@ let drydockPlans = vessels.map((vessel, index) => {
     notes: index % 4 === 0 ? "Check docking window against charter commitment and owner cost exposure." : "Routine DD planning record created from vessel register.",
   };
 });
+let submittedReports = [];
 
 function loadAppState() {
   try {
@@ -193,6 +194,9 @@ function loadAppState() {
     if (Array.isArray(saved.drydockPlans)) {
       drydockPlans = saved.drydockPlans;
     }
+    if (Array.isArray(saved.submittedReports)) {
+      submittedReports = saved.submittedReports;
+    }
   } catch (error) {
     console.warn("Unable to load saved offline data", error);
   }
@@ -203,6 +207,7 @@ function saveAppState() {
     reports,
     claims,
     drydockPlans,
+    submittedReports,
     savedAt: new Date().toISOString(),
   };
   localStorage.setItem(APP_STATE_KEY, JSON.stringify(state));
@@ -217,12 +222,13 @@ async function loadRemoteState() {
     const hasRemoteState = Array.isArray(saved.reports) && Array.isArray(saved.claims) && Array.isArray(saved.drydockPlans);
     if (!hasRemoteState) {
       remoteStateAvailable = true;
-      await saveRemoteState({ reports, claims, drydockPlans });
+      await saveRemoteState({ reports, claims, drydockPlans, submittedReports });
       return true;
     }
     reports.splice(0, reports.length, ...saved.reports);
     claims = saved.claims;
     drydockPlans = saved.drydockPlans;
+    submittedReports = Array.isArray(saved.submittedReports) ? saved.submittedReports : [];
     localStorage.setItem(APP_STATE_KEY, JSON.stringify(saved));
     remoteStateAvailable = true;
     return true;
@@ -249,7 +255,7 @@ function updateSyncStatus() {
   status.className = `sync-status ${remoteStateAvailable ? "online" : "local"}`;
 }
 
-async function saveRemoteState(state = { reports, claims, drydockPlans }) {
+async function saveRemoteState(state = { reports, claims, drydockPlans, submittedReports }) {
   try {
     if (!currentUser) {
       remoteStateAvailable = false;
@@ -653,6 +659,50 @@ function downloadMonthlyReportPdf(vesselName) {
   link.click();
   link.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function downloadSubmittedReportPdf(reportId) {
+  const archiveItem = submittedReports.find((item) => item.id === reportId);
+  if (!archiveItem) {
+    showToast("Submitted report not found.");
+    return;
+  }
+  const blob = createPdfFromLines(buildMonthlyReportLines(archiveItem.report));
+  const url = URL.createObjectURL(blob);
+  const filename = `${archiveItem.vessel.replace(/[^a-z0-9]+/gi, "_")}_${archiveItem.period.replace(/[^a-z0-9]+/gi, "_")}_Submitted_Report.pdf`;
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function archiveSubmittedReport(report) {
+  const snapshot = JSON.parse(JSON.stringify(report));
+  snapshot.status = "Owner Review";
+  const vessel = vessels.find((item) => item.vessel === report.vessel);
+  const score = reportAverage(snapshot);
+  const archived = {
+    id: `${report.vessel}-${report.period}`.replace(/[^a-z0-9]+/gi, "_").toLowerCase(),
+    vessel: report.vessel,
+    owner: vessel?.owner || "",
+    period: report.period,
+    submittedAt: new Date().toISOString(),
+    averageScore: score,
+    openIssues: snapshot.openIssues,
+    status: snapshot.status,
+    categoryScores: { ...snapshot.scores },
+    report: snapshot,
+  };
+  const existingIndex = submittedReports.findIndex((item) => item.id === archived.id);
+  if (existingIndex >= 0) {
+    submittedReports.splice(existingIndex, 1, archived);
+  } else {
+    submittedReports.unshift(archived);
+  }
+  return archived;
 }
 
 function parseDate(value) {
@@ -1069,6 +1119,89 @@ async function renderUsers() {
   }
 }
 
+function renderSubmittedArchive() {
+  const vesselFilter = document.querySelector("#archiveVesselFilter");
+  if (!vesselFilter) return;
+  const filter = vesselFilter.value || "all";
+  const visible = submittedReports
+    .filter((item) => filter === "all" || item.vessel === filter)
+    .sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
+  const avgScore = submittedReports.length ? average(submittedReports.map((item) => item.averageScore)) : 0;
+
+  document.querySelector("#archiveCount").textContent = submittedReports.length;
+  document.querySelector("#archiveAvgScore").textContent = avgScore.toFixed(1);
+  document.querySelector("#archiveCritical").textContent = submittedReports.filter((item) => item.averageScore < 7).length;
+  document.querySelector("#archiveOpenIssues").textContent = submittedReports.reduce((sum, item) => sum + Number(item.openIssues || 0), 0);
+
+  document.querySelector("#submittedReportsList").innerHTML = visible.length
+    ? visible
+        .map((item) => {
+          const status = statusForScore(item.averageScore);
+          return `
+            <article class="review-card">
+              <strong>${item.vessel} - ${item.period} <span class="score-pill ${status.className}">${item.averageScore.toFixed(1)}</span></strong>
+              <p>Submitted: ${new Date(item.submittedAt).toLocaleString()} | Owner: ${item.owner || "-"} | Open issues: ${item.openIssues}</p>
+              <button class="secondary-action pdf-report-button" data-submitted-pdf="${item.id}">Download PDF</button>
+            </article>
+          `;
+        })
+        .join("")
+    : `<article class="review-card"><strong>No submitted reports yet</strong><p>Reports will appear here after technical managers click Submit for Owner Review.</p></article>`;
+
+  renderArchiveInfographics();
+}
+
+function renderArchiveInfographics() {
+  const container = document.querySelector("#archiveInfographics");
+  if (!container) return;
+  const byVessel = vessels
+    .map((vessel) => {
+      const vesselReports = submittedReports.filter((item) => item.vessel === vessel.vessel);
+      const avg = vesselReports.length ? average(vesselReports.map((item) => item.averageScore)) : 0;
+      return { vessel: vessel.vessel, count: vesselReports.length, avg };
+    })
+    .filter((item) => item.count > 0)
+    .sort((a, b) => b.avg - a.avg);
+
+  const categoryAverages = categories
+    .map((category) => {
+      const values = submittedReports.map((item) => item.categoryScores?.[category]).filter((value) => typeof value === "number");
+      return { label: category, value: values.length ? average(values) : 0 };
+    })
+    .filter((item) => item.value > 0);
+
+  const vesselBars = byVessel
+    .map(
+      (item) => `
+        <div class="bar-row">
+          <div class="bar-label"><span>${item.vessel} (${item.count})</span><strong>${item.avg.toFixed(1)}</strong></div>
+          <div class="bar-track"><div class="bar-fill ${statusForScore(item.avg).className}" style="width:${item.avg * 10}%"></div></div>
+        </div>
+      `,
+    )
+    .join("");
+
+  const categoryBars = categoryAverages
+    .map(
+      (item) => `
+        <div class="bar-row">
+          <div class="bar-label"><span>${item.label}</span><strong>${item.value.toFixed(1)}</strong></div>
+          <div class="bar-track"><div class="bar-fill ${statusForScore(item.value).className}" style="width:${item.value * 10}%"></div></div>
+        </div>
+      `,
+    )
+    .join("");
+
+  container.innerHTML = submittedReports.length
+    ? `
+      <h4 class="mini-heading">Average Score by Vessel</h4>
+      ${vesselBars || "<p>No vessel averages yet.</p>"}
+      <h4 class="mini-heading">Average Score by Category</h4>
+      ${categoryBars || "<p>No category averages yet.</p>"}
+    `
+    : "<p>No submitted data available for KPI infographics yet.</p>";
+}
+
 function selectedDrydockPlan() {
   const selected = document.querySelector("#ddVessel").value || vessels[0].vessel;
   return drydockPlans.find((plan) => plan.vessel === selected);
@@ -1219,6 +1352,7 @@ function populateSelects() {
   document.querySelector("#reportVessel").innerHTML = vesselOptions;
   document.querySelector("#claimVessel").innerHTML = vesselOptions;
   document.querySelector("#ddVessel").innerHTML = vesselOptions;
+  document.querySelector("#archiveVesselFilter").innerHTML = `<option value="all">All vessels</option>` + vesselOptions;
 }
 
 function setView(viewId) {
@@ -1232,6 +1366,7 @@ function setView(viewId) {
     drydock: "Dry Dock Planner",
     aiReview: "AI Review",
     review: "Owner Review",
+    archive: "Submitted Reports",
     users: "Users",
   };
   document.querySelector("#viewTitle").textContent = titles[viewId];
@@ -1276,6 +1411,7 @@ function bindEvents() {
       renderDrydock();
       renderAiReview();
       renderReviewQueue();
+      renderSubmittedArchive();
       renderUsers();
       updateSyncStatus();
       showToast("Signed in successfully.");
@@ -1318,6 +1454,7 @@ function bindEvents() {
   document.querySelector("#reportVessel").addEventListener("change", renderReportEditor);
   document.querySelector("#ddVessel").addEventListener("change", renderDrydockEditor);
   document.querySelector("#aiVesselFilter").addEventListener("change", renderAiReview);
+  document.querySelector("#archiveVesselFilter").addEventListener("change", renderSubmittedArchive);
 
   document.querySelector("#scoreInputs").addEventListener("input", (event) => {
     const selected = document.querySelector("#reportVessel").value;
@@ -1382,9 +1519,11 @@ function bindEvents() {
     const selected = document.querySelector("#reportVessel").value;
     const report = reports.find((item) => item.vessel === selected);
     report.status = "Owner Review";
+    archiveSubmittedReport(report);
     saveAppState();
     renderReportEditor();
     renderReviewQueue();
+    renderSubmittedArchive();
     showToast(`${selected} submitted for owner review.`);
   });
 
@@ -1392,6 +1531,12 @@ function bindEvents() {
     const vesselName = event.target.dataset.reportPdf;
     if (!vesselName) return;
     downloadMonthlyReportPdf(vesselName);
+  });
+
+  document.querySelector("#submittedReportsList").addEventListener("click", (event) => {
+    const reportId = event.target.dataset.submittedPdf;
+    if (!reportId) return;
+    downloadSubmittedReportPdf(reportId);
   });
 
   document.querySelector("#addClaim").addEventListener("click", () => {
@@ -1508,6 +1653,7 @@ async function init() {
   renderDrydock();
   renderAiReview();
   renderReviewQueue();
+  renderSubmittedArchive();
   renderUsers();
   updateSyncStatus();
 }

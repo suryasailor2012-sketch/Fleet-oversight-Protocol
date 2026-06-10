@@ -263,6 +263,9 @@ async function handleApi(request, response) {
         sendJson(response, 400, { error: "Invalid state payload" });
         return true;
       }
+      if (!Array.isArray(state.submittedReports)) {
+        state.submittedReports = [];
+      }
       sendJson(response, 200, writeState(state));
       return true;
     } catch (error) {

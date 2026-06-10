@@ -375,6 +375,12 @@ textarea {
   gap: 12px;
 }
 
+.mini-heading {
+  margin: 12px 0 2px;
+  font-size: 13px;
+  color: var(--ink);
+}
+
 .bar-row {
   display: grid;
   gap: 6px;

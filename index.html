@@ -6,7 +6,7 @@
     <title>Fleet Technical Oversight</title>
     <meta name="theme-color" content="#10243a" />
     <link rel="manifest" href="manifest.webmanifest" />
-    <link rel="stylesheet" href="styles.css?v=20260610-pdf-header" />
+    <link rel="stylesheet" href="styles.css?v=20260610-archive" />
   </head>
   <body>
     <div class="app-shell">
@@ -39,6 +39,9 @@
           </button>
           <button class="nav-item" data-view="review">
             <span>Owner Review</span>
+          </button>
+          <button class="nav-item" data-view="archive">
+            <span>Submitted Reports</span>
           </button>
           <button class="nav-item admin-only" data-view="users">
             <span>Users</span>
@@ -454,6 +457,52 @@
           </div>
         </section>
 
+        <section class="view" id="archive">
+          <div class="kpi-grid">
+            <article class="kpi">
+              <span>Submitted reports</span>
+              <strong id="archiveCount">0</strong>
+            </article>
+            <article class="kpi">
+              <span>Archive average score</span>
+              <strong id="archiveAvgScore">0.0</strong>
+            </article>
+            <article class="kpi">
+              <span>Critical submissions</span>
+              <strong id="archiveCritical">0</strong>
+            </article>
+            <article class="kpi">
+              <span>Open issues captured</span>
+              <strong id="archiveOpenIssues">0</strong>
+            </article>
+          </div>
+
+          <div class="dashboard-layout">
+            <section class="panel">
+              <div class="panel-heading">
+                <div>
+                  <h3>Submitted Report Folder</h3>
+                  <p>Monthly report snapshots stored by vessel and period</p>
+                </div>
+                <select id="archiveVesselFilter" aria-label="Filter submitted reports">
+                  <option value="all">All vessels</option>
+                </select>
+              </div>
+              <div id="submittedReportsList" class="review-list"></div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-heading">
+                <div>
+                  <h3>KPI Infographics</h3>
+                  <p>Tracking built from submitted reports</p>
+                </div>
+              </div>
+              <div id="archiveInfographics" class="bar-list"></div>
+            </section>
+          </div>
+        </section>
+
         <section class="view" id="users">
           <div class="dashboard-layout">
             <section class="panel">
@@ -525,6 +574,6 @@
     </section>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="script.js?v=20260610-pdf-header"></script>
+    <script src="script.js?v=20260610-archive"></script>
   </body>
 </html>
