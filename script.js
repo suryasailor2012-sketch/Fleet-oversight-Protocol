@@ -481,6 +481,7 @@ function buildMonthlyReportLines(report) {
 }
 
 function createPdfFromLines(lines) {
+  const byteLength = (value) => new TextEncoder().encode(value).length;
   const pageWidth = 595;
   const pageHeight = 842;
   const margin = 42;
@@ -521,7 +522,7 @@ function createPdfFromLines(lines) {
         return `BT /${font} ${line.size || 10} Tf ${line.x} ${line.y} Td (${escapePdfText(line.text)}) Tj ET`;
       })
       .join("\n");
-    const contentRef = addObject(`<< /Length ${Buffer.byteLength(stream, "utf8")} >>\nstream\n${stream}\nendstream`);
+    const contentRef = addObject(`<< /Length ${byteLength(stream)} >>\nstream\n${stream}\nendstream`);
     const pageRef = addObject(`<< /Type /Page /Parent 0 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] /Resources << /Font << /F1 ${fontRegular} 0 R /F2 ${fontBold} 0 R >> >> /Contents ${contentRef} 0 R >>`);
     pageRefs.push(pageRef);
   });
@@ -535,10 +536,10 @@ function createPdfFromLines(lines) {
   let pdf = "%PDF-1.4\n";
   const offsets = [0];
   objects.forEach((object, index) => {
-    offsets.push(Buffer.byteLength(pdf, "utf8"));
+    offsets.push(byteLength(pdf));
     pdf += `${index + 1} 0 obj\n${object}\nendobj\n`;
   });
-  const xrefOffset = Buffer.byteLength(pdf, "utf8");
+  const xrefOffset = byteLength(pdf);
   pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
   offsets.slice(1).forEach((offset) => {
     pdf += `${String(offset).padStart(10, "0")} 00000 n \n`;
@@ -559,8 +560,10 @@ function downloadMonthlyReportPdf(vesselName) {
   const link = document.createElement("a");
   link.href = url;
   link.download = filename;
+  document.body.appendChild(link);
   link.click();
-  URL.revokeObjectURL(url);
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 function parseDate(value) {
