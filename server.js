@@ -1,11 +1,14 @@
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
 
 const root = __dirname;
 const port = process.env.PORT || 4173;
 const dataDir = process.env.DATA_DIR || path.join(root, "data");
 const stateFile = path.join(dataDir, "app-state.json");
+const usersFile = path.join(dataDir, "users.json");
+const sessions = new Map();
 
 const contentTypes = {
   ".html": "text/html; charset=utf-8",
@@ -32,6 +35,55 @@ function readState() {
   return JSON.parse(fs.readFileSync(stateFile, "utf8"));
 }
 
+function publicUser(user) {
+  if (!user) return null;
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    assignedVessels: user.assignedVessels || []
+  };
+}
+
+function hashPassword(password, salt = crypto.randomBytes(16).toString("hex")) {
+  const hash = crypto.pbkdf2Sync(password, salt, 120000, 64, "sha512").toString("hex");
+  return `${salt}:${hash}`;
+}
+
+function verifyPassword(password, stored) {
+  const [salt, expected] = String(stored || "").split(":");
+  if (!salt || !expected) return false;
+  const actual = crypto.pbkdf2Sync(password, salt, 120000, 64, "sha512").toString("hex");
+  return crypto.timingSafeEqual(Buffer.from(actual, "hex"), Buffer.from(expected, "hex"));
+}
+
+function readUsers() {
+  ensureDataDir();
+  if (!fs.existsSync(usersFile)) {
+    const adminEmail = process.env.ADMIN_EMAIL || "admin@fleet.local";
+    const adminPassword = process.env.ADMIN_PASSWORD || "ChangeMe123!";
+    const initialUsers = [
+      {
+        id: crypto.randomUUID(),
+        name: "System Admin",
+        email: adminEmail.toLowerCase(),
+        role: "admin",
+        assignedVessels: [],
+        passwordHash: hashPassword(adminPassword),
+        createdAt: new Date().toISOString()
+      }
+    ];
+    fs.writeFileSync(usersFile, JSON.stringify(initialUsers, null, 2));
+  }
+  return JSON.parse(fs.readFileSync(usersFile, "utf8"));
+}
+
+function writeUsers(users) {
+  ensureDataDir();
+  fs.writeFileSync(usersFile, JSON.stringify(users, null, 2));
+}
+
 function writeState(state) {
   ensureDataDir();
   const payload = {
@@ -48,6 +100,46 @@ function sendJson(response, status, payload) {
     "Cache-Control": "no-store"
   });
   response.end(JSON.stringify(payload));
+}
+
+function getCookie(request, name) {
+  const cookies = String(request.headers.cookie || "").split(";").map((item) => item.trim());
+  const match = cookies.find((item) => item.startsWith(`${name}=`));
+  return match ? decodeURIComponent(match.slice(name.length + 1)) : "";
+}
+
+function setSessionCookie(response, sessionId) {
+  response.setHeader("Set-Cookie", `fto_session=${encodeURIComponent(sessionId)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=604800`);
+}
+
+function clearSessionCookie(response) {
+  response.setHeader("Set-Cookie", "fto_session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0");
+}
+
+function currentUser(request) {
+  const sessionId = getCookie(request, "fto_session");
+  const userId = sessions.get(sessionId);
+  if (!userId) return null;
+  return readUsers().find((user) => user.id === userId) || null;
+}
+
+function requireUser(request, response) {
+  const user = currentUser(request);
+  if (!user) {
+    sendJson(response, 401, { error: "Sign in required" });
+    return null;
+  }
+  return user;
+}
+
+function requireAdmin(request, response) {
+  const user = requireUser(request, response);
+  if (!user) return null;
+  if (user.role !== "admin") {
+    sendJson(response, 403, { error: "Admin access required" });
+    return null;
+  }
+  return user;
 }
 
 function readRequestBody(request) {
@@ -79,12 +171,91 @@ async function handleApi(request, response) {
     return true;
   }
 
+  if (request.url.startsWith("/api/auth/me")) {
+    sendJson(response, 200, { user: publicUser(currentUser(request)) });
+    return true;
+  }
+
+  if (request.url.startsWith("/api/auth/login") && request.method === "POST") {
+    try {
+      const body = JSON.parse(await readRequestBody(request) || "{}");
+      const email = String(body.email || "").trim().toLowerCase();
+      const password = String(body.password || "");
+      const user = readUsers().find((item) => item.email === email);
+      if (!user || !verifyPassword(password, user.passwordHash)) {
+        sendJson(response, 401, { error: "Invalid email or password" });
+        return true;
+      }
+      const sessionId = crypto.randomUUID();
+      sessions.set(sessionId, user.id);
+      setSessionCookie(response, sessionId);
+      sendJson(response, 200, { user: publicUser(user) });
+      return true;
+    } catch (error) {
+      sendJson(response, 400, { error: error.message });
+      return true;
+    }
+  }
+
+  if (request.url.startsWith("/api/auth/logout") && request.method === "POST") {
+    const sessionId = getCookie(request, "fto_session");
+    sessions.delete(sessionId);
+    clearSessionCookie(response);
+    sendJson(response, 200, { ok: true });
+    return true;
+  }
+
+  if (request.url.startsWith("/api/users") && request.method === "GET") {
+    if (!requireAdmin(request, response)) return true;
+    sendJson(response, 200, { users: readUsers().map(publicUser) });
+    return true;
+  }
+
+  if (request.url.startsWith("/api/users") && request.method === "POST") {
+    if (!requireAdmin(request, response)) return true;
+    try {
+      const body = JSON.parse(await readRequestBody(request) || "{}");
+      const email = String(body.email || "").trim().toLowerCase();
+      const password = String(body.password || "");
+      const name = String(body.name || "").trim();
+      const role = String(body.role || "technical_manager");
+      const allowedRoles = ["admin", "technical_manager", "owner_viewer"];
+      if (!name || !email || password.length < 8 || !allowedRoles.includes(role)) {
+        sendJson(response, 400, { error: "Name, valid role and password of at least 8 characters are required" });
+        return true;
+      }
+      const users = readUsers();
+      if (users.some((user) => user.email === email)) {
+        sendJson(response, 409, { error: "User email already exists" });
+        return true;
+      }
+      const user = {
+        id: crypto.randomUUID(),
+        name,
+        email,
+        role,
+        assignedVessels: Array.isArray(body.assignedVessels) ? body.assignedVessels : [],
+        passwordHash: hashPassword(password),
+        createdAt: new Date().toISOString()
+      };
+      users.push(user);
+      writeUsers(users);
+      sendJson(response, 201, { user: publicUser(user) });
+      return true;
+    } catch (error) {
+      sendJson(response, 400, { error: error.message });
+      return true;
+    }
+  }
+
   if (request.url.startsWith("/api/state") && request.method === "GET") {
+    if (!requireUser(request, response)) return true;
     sendJson(response, 200, readState() || {});
     return true;
   }
 
   if (request.url.startsWith("/api/state") && request.method === "PUT") {
+    if (!requireUser(request, response)) return true;
     try {
       const body = await readRequestBody(request);
       const state = JSON.parse(body || "{}");

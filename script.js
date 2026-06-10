@@ -21,6 +21,7 @@ const categories = [
 const APP_STATE_KEY = "fleetTechnicalOversightState.v1";
 let remoteSaveTimer = null;
 let remoteStateAvailable = false;
+let currentUser = null;
 
 const reportTemplate = {
   "Hull": [
@@ -224,6 +225,11 @@ async function loadRemoteState() {
     remoteStateAvailable = true;
     return true;
   } catch (error) {
+    if (String(error.message || "").includes("Sign in required")) {
+      remoteStateAvailable = false;
+      updateSyncStatus();
+      return false;
+    }
     console.warn("Remote state unavailable; using local data", error);
     return false;
   }
@@ -243,6 +249,11 @@ function updateSyncStatus() {
 
 async function saveRemoteState(state = { reports, claims, drydockPlans }) {
   try {
+    if (!currentUser) {
+      remoteStateAvailable = false;
+      updateSyncStatus();
+      return false;
+    }
     const response = await fetch("/api/state", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -264,6 +275,39 @@ function registerOfflineSupport() {
   navigator.serviceWorker.register("sw.js").catch((error) => {
     console.warn("Offline support registration failed", error);
   });
+}
+
+async function apiRequest(path, options = {}) {
+  const response = await fetch(path, {
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+    ...options,
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.error || "Request failed");
+  }
+  return data;
+}
+
+async function loadCurrentUser() {
+  try {
+    const data = await apiRequest("/api/auth/me");
+    currentUser = data.user || null;
+  } catch {
+    currentUser = null;
+  }
+  applyAuthState();
+  return currentUser;
+}
+
+function applyAuthState() {
+  document.body.classList.toggle("requires-login", !currentUser);
+  document.body.classList.toggle("is-admin", currentUser?.role === "admin");
+  const chip = document.querySelector("#currentUserChip");
+  if (chip) {
+    chip.textContent = currentUser ? `${currentUser.name} (${currentUser.role.replace("_", " ")})` : "Not signed in";
+  }
 }
 
 function sampleValue(item, vesselIndex, itemIndex) {
@@ -746,6 +790,26 @@ function renderReviewQueue() {
     .join("");
 }
 
+async function renderUsers() {
+  if (currentUser?.role !== "admin") return;
+  try {
+    const data = await apiRequest("/api/users");
+    document.querySelector("#usersList").innerHTML = data.users
+      .map(
+        (user) => `
+          <article class="review-card">
+            <strong>${user.name}</strong>
+            <p>${user.email}</p>
+            <p>Role: ${user.role.replace("_", " ")}</p>
+          </article>
+        `,
+      )
+      .join("");
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
 function selectedDrydockPlan() {
   const selected = document.querySelector("#ddVessel").value || vessels[0].vessel;
   return drydockPlans.find((plan) => plan.vessel === selected);
@@ -907,6 +971,7 @@ function setView(viewId) {
     drydock: "Dry Dock Planner",
     aiReview: "AI Review",
     review: "Owner Review",
+    users: "Users",
   };
   document.querySelector("#viewTitle").textContent = titles[viewId];
 }
@@ -931,6 +996,62 @@ function showToast(message) {
 
 function bindEvents() {
   document.querySelectorAll(".nav-item").forEach((item) => item.addEventListener("click", () => setView(item.dataset.view)));
+  document.querySelector("#loginForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    try {
+      const data = await apiRequest("/api/auth/login", {
+        method: "POST",
+        body: JSON.stringify({
+          email: document.querySelector("#loginEmail").value,
+          password: document.querySelector("#loginPassword").value,
+        }),
+      });
+      currentUser = data.user;
+      applyAuthState();
+      await loadRemoteState();
+      renderDashboard();
+      renderReportEditor();
+      renderClaims();
+      renderDrydock();
+      renderAiReview();
+      renderReviewQueue();
+      renderUsers();
+      updateSyncStatus();
+      showToast("Signed in successfully.");
+    } catch (error) {
+      showToast(error.message);
+    }
+  });
+
+  document.querySelector("#logoutButton").addEventListener("click", async () => {
+    await apiRequest("/api/auth/logout", { method: "POST", body: "{}" }).catch(() => null);
+    currentUser = null;
+    remoteStateAvailable = false;
+    applyAuthState();
+    updateSyncStatus();
+    showToast("Signed out.");
+  });
+
+  document.querySelector("#userForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    try {
+      await apiRequest("/api/users", {
+        method: "POST",
+        body: JSON.stringify({
+          name: document.querySelector("#newUserName").value,
+          email: document.querySelector("#newUserEmail").value,
+          password: document.querySelector("#newUserPassword").value,
+          role: document.querySelector("#newUserRole").value,
+        }),
+      });
+      event.target.reset();
+      await renderUsers();
+      showToast("User created.");
+    } catch (error) {
+      showToast(error.message);
+    }
+  });
+
   document.querySelector("#globalSearch").addEventListener("input", renderDashboard);
   document.querySelector("#ownerFilter").addEventListener("change", renderDashboard);
   document.querySelector("#reportVessel").addEventListener("change", renderReportEditor);
@@ -1097,10 +1218,13 @@ function bindEvents() {
 
 async function init() {
   loadAppState();
-  await loadRemoteState();
   registerOfflineSupport();
   populateSelects();
   bindEvents();
+  await loadCurrentUser();
+  if (currentUser) {
+    await loadRemoteState();
+  }
   renderDashboard();
   renderVesselRegister();
   renderReportEditor();
@@ -1108,6 +1232,7 @@ async function init() {
   renderDrydock();
   renderAiReview();
   renderReviewQueue();
+  renderUsers();
   updateSyncStatus();
 }
 

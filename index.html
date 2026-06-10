@@ -40,6 +40,9 @@
           <button class="nav-item" data-view="review">
             <span>Owner Review</span>
           </button>
+          <button class="nav-item admin-only" data-view="users">
+            <span>Users</span>
+          </button>
         </nav>
         <div class="sidebar-note">
           <strong>Reporting period</strong>
@@ -55,11 +58,13 @@
           </div>
           <div class="topbar-actions">
             <span class="sync-status" id="syncStatus">Local mode</span>
+            <span class="user-chip" id="currentUserChip">Not signed in</span>
             <label class="search-box">
               <span>Search</span>
               <input id="globalSearch" type="search" placeholder="Vessel, IMO, owner, superintendent" />
             </label>
             <button class="primary-action" id="exportSummary">Export Summary</button>
+            <button class="secondary-action" id="logoutButton">Logout</button>
           </div>
         </header>
 
@@ -439,8 +444,76 @@
             <div id="reviewQueue" class="review-list"></div>
           </div>
         </section>
+
+        <section class="view" id="users">
+          <div class="dashboard-layout">
+            <section class="panel">
+              <div class="panel-heading">
+                <div>
+                  <h3>Create User</h3>
+                  <p>Add technical managers or owner viewers</p>
+                </div>
+              </div>
+              <form class="user-form" id="userForm">
+                <label>
+                  <span>Name</span>
+                  <input id="newUserName" required placeholder="Technical Manager Name" />
+                </label>
+                <label>
+                  <span>Email</span>
+                  <input id="newUserEmail" type="email" required placeholder="name@company.com" />
+                </label>
+                <label>
+                  <span>Password</span>
+                  <input id="newUserPassword" type="password" required minlength="8" placeholder="Minimum 8 characters" />
+                </label>
+                <label>
+                  <span>Role</span>
+                  <select id="newUserRole">
+                    <option value="technical_manager">Technical Manager</option>
+                    <option value="owner_viewer">Owner Viewer</option>
+                    <option value="admin">Admin</option>
+                  </select>
+                </label>
+                <button class="primary-action" type="submit">Create User</button>
+              </form>
+            </section>
+
+            <section class="panel">
+              <div class="panel-heading">
+                <div>
+                  <h3>Active Users</h3>
+                  <p>Accounts allowed to access this Railway app</p>
+                </div>
+              </div>
+              <div id="usersList" class="review-list"></div>
+            </section>
+          </div>
+        </section>
       </main>
     </div>
+
+    <section class="login-overlay" id="loginOverlay">
+      <form class="login-panel" id="loginForm">
+        <div class="brand login-brand">
+          <div class="brand-mark">FT</div>
+          <div>
+            <h1>Fleet Technical</h1>
+            <p>Sign in to continue</p>
+          </div>
+        </div>
+        <label>
+          <span>Email</span>
+          <input id="loginEmail" type="email" required autocomplete="email" />
+        </label>
+        <label>
+          <span>Password</span>
+          <input id="loginPassword" type="password" required autocomplete="current-password" />
+        </label>
+        <button class="primary-action" type="submit">Sign In</button>
+        <p class="login-help" id="loginHelp">First admin: admin@fleet.local / ChangeMe123! unless changed in Railway variables.</p>
+      </form>
+    </section>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <script src="script.js?v=20260604-offline"></script>

@@ -12,6 +12,7 @@ This is the Railway-ready package for the Fleet Technical Oversight prototype.
 - AI review dashboard
 - Offline browser fallback
 - Central server-side state save through `/api/state`
+- Login and admin-created user accounts
 
 ## Important
 
@@ -19,8 +20,8 @@ This package provides a lightweight shared-data prototype. It stores data in a J
 
 For long-term production use, add:
 
-- User login
-- Role-based access control
+- Microsoft/Google single sign-on if required
+- Vessel-specific role-based access control
 - PostgreSQL database
 - Audit log
 - File upload storage
@@ -36,6 +37,26 @@ For long-term production use, add:
 6. Railway should detect Node.js.
 7. Start command: `npm start`
 8. Generate/open the Railway public domain.
+
+## First Admin Login
+
+On first run, the server creates one admin account.
+
+Default login:
+
+```text
+Email: admin@fleet.local
+Password: ChangeMe123!
+```
+
+For live use, set these Railway variables before the first deployment:
+
+```text
+ADMIN_EMAIL=your-admin-email@company.com
+ADMIN_PASSWORD=choose-a-strong-password
+```
+
+After signing in as admin, open the **Users** tab and create technical manager accounts.
 
 ## Recommended Railway Volume
 
@@ -58,4 +79,3 @@ Then open:
 ```text
 http://localhost:4173
 ```
-
