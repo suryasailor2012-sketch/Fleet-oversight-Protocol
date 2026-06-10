@@ -169,6 +169,8 @@ let drydockPlans = vessels.map((vessel, index) => {
     specialEnd: toDateInput(addDays(baseDue, 30)),
     intermediateStart: index % 3 === 0 ? toDateInput(addDays(baseDue, -120)) : "",
     intermediateEnd: index % 3 === 0 ? toDateInput(addDays(baseDue, 20)) : "",
+    annualStart: toDateInput(addDays(baseDue, -180)),
+    annualEnd: toDateInput(addDays(baseDue, -120)),
     bottomDue: toDateInput(baseDue),
     prepDays: 30 + (index % 3) * 10,
     projectDays: 15 + (index % 4) * 5,
@@ -423,18 +425,36 @@ function wrapPdfText(text, maxChars = 95) {
   return lines.length ? lines : [""];
 }
 
+function hexToRgb(hex) {
+  const clean = String(hex || "000000").replace("#", "");
+  const r = parseInt(clean.slice(0, 2), 16) / 255;
+  const g = parseInt(clean.slice(2, 4), 16) / 255;
+  const b = parseInt(clean.slice(4, 6), 16) / 255;
+  return `${r.toFixed(3)} ${g.toFixed(3)} ${b.toFixed(3)}`;
+}
+
 function buildMonthlyReportLines(report) {
   const vessel = vessels.find((item) => item.vessel === report.vessel);
   const relatedClaims = claims.filter((claim) => claim.vessel === report.vessel);
   const drydockPlan = drydockPlans.find((plan) => plan.vessel === report.vessel);
   const schedule = drydockPlan ? calculateDrydockSchedule(drydockPlan) : null;
+  const companyName = vessel?.owner || "SEA TRANSPORT GROUP";
+  const annualSurveyDates = drydockPlan?.annualStart || drydockPlan?.annualEnd
+    ? `${drydockPlan.annualStart || "-"} to ${drydockPlan.annualEnd || "-"}`
+    : "-";
   const lines = [];
 
-  lines.push({ text: "Fleet Technical Oversight - Monthly Vessel Report", size: 16, bold: true });
-  lines.push({ text: `Vessel: ${report.vessel}`, size: 13, bold: true });
-  lines.push({ text: `Period: ${report.period} | Status: ${report.status} | Average Score: ${reportAverage(report)}`, size: 10 });
-  lines.push({ text: `Owner: ${vessel?.owner || "-"} | Class: ${vessel?.classSociety || "-"} | Flag: ${vessel?.flag || "-"} | IMO: ${vessel?.imo || "-"}`, size: 10 });
-  lines.push({ text: `Marine Supt.: ${vessel?.marine || "-"} | Technical Supt.: ${vessel?.technical || "-"}`, size: 10 });
+  lines.push({ type: "companyHeader", companyName, subtitle: "Fleet Technical Oversight - Monthly Vessel Report" });
+  lines.push({
+    type: "table",
+    rows: [
+      ["Ship Name", report.vessel, "IMO Number", vessel?.imo || "-"],
+      ["Technical Superintendent", vessel?.technical || "-", "Marine Superintendent", vessel?.marine || "-"],
+      ["Due Drydock Date", drydockPlan?.bottomDue || "-", "Annual Survey Dates", annualSurveyDates],
+      ["Report Period", report.period, "Report Status", report.status],
+      ["Average Score", reportAverage(report), "Class / Flag", `${vessel?.classSociety || "-"} / ${vessel?.flag || "-"}`],
+    ],
+  });
   lines.push({ text: " ", size: 8 });
   lines.push({ text: "Major Technical / Operational Remarks", size: 12, bold: true });
   wrapPdfText(report.remarks || "-", 100).forEach((line) => lines.push({ text: line, size: 10 }));
@@ -490,6 +510,10 @@ function createPdfFromLines(lines) {
   let current = [];
   let y = pageHeight - margin;
 
+  function addDraw(command) {
+    current.push(command);
+  }
+
   function addLine(line) {
     const size = line.size || 10;
     const height = size + lineGap;
@@ -502,7 +526,57 @@ function createPdfFromLines(lines) {
     y -= height;
   }
 
-  lines.forEach((line) => addLine(line));
+  function ensureSpace(height) {
+    if (y - height < margin) {
+      pages.push(current);
+      current = [];
+      y = pageHeight - margin;
+    }
+  }
+
+  function addCompanyHeader(line) {
+    ensureSpace(72);
+    addDraw({ type: "rect", x: margin, y: y - 52, w: pageWidth - margin * 2, h: 52, fill: "10243a" });
+    addDraw({ type: "circleLogo", x: margin + 22, y: y - 26, r: 18 });
+    addDraw({ type: "text", text: "FT", x: margin + 11, y: y - 31, size: 13, bold: true, color: "10243a" });
+    addDraw({ type: "text", text: line.companyName, x: margin + 52, y: y - 20, size: 15, bold: true, color: "ffffff" });
+    addDraw({ type: "text", text: line.subtitle, x: margin + 52, y: y - 38, size: 10, color: "d8e4ef" });
+    y -= 68;
+  }
+
+  function addTable(line) {
+    const rowHeight = 24;
+    const colWidths = [118, 160, 118, pageWidth - margin * 2 - 396];
+    const tableWidth = colWidths.reduce((sum, width) => sum + width, 0);
+    const tableHeight = line.rows.length * rowHeight;
+    ensureSpace(tableHeight + 18);
+    let rowY = y;
+    line.rows.forEach((row, rowIndex) => {
+      let x = margin;
+      row.forEach((cell, cellIndex) => {
+        const w = colWidths[cellIndex];
+        const isLabel = cellIndex === 0 || cellIndex === 2;
+        addDraw({ type: "rect", x, y: rowY - rowHeight, w, h: rowHeight, stroke: "cbd7e3", fill: isLabel ? "f1f5f8" : "ffffff" });
+        addDraw({ type: "text", text: String(cell ?? "-"), x: x + 5, y: rowY - 16, size: 8.5, bold: isLabel, color: isLabel ? "33475b" : "17202a" });
+        x += w;
+      });
+      rowY -= rowHeight;
+    });
+    addDraw({ type: "rect", x: margin, y: y - tableHeight, w: tableWidth, h: tableHeight, stroke: "8fa3b7" });
+    y -= tableHeight + 16;
+  }
+
+  lines.forEach((line) => {
+    if (line.type === "companyHeader") {
+      addCompanyHeader(line);
+      return;
+    }
+    if (line.type === "table") {
+      addTable(line);
+      return;
+    }
+    addLine(line);
+  });
   if (current.length) pages.push(current);
 
   const objects = [];
@@ -518,8 +592,23 @@ function createPdfFromLines(lines) {
   pages.forEach((page) => {
     const stream = page
       .map((line) => {
+        if (line.type === "rect") {
+          const ops = [];
+          if (line.fill) ops.push(`${hexToRgb(line.fill)} rg`);
+          if (line.stroke) ops.push(`${hexToRgb(line.stroke)} RG`);
+          ops.push(`${line.x} ${line.y} ${line.w} ${line.h} re`);
+          ops.push(line.fill && line.stroke ? "B" : line.fill ? "f" : "S");
+          return ops.join(" ");
+        }
+        if (line.type === "circleLogo") {
+          return `${hexToRgb("ffffff")} rg ${line.x - line.r} ${line.y - line.r} ${line.r * 2} ${line.r * 2} re f`;
+        }
+        if (line.type === "text") {
+          const font = line.bold ? "F2" : "F1";
+          return `${hexToRgb(line.color || "17202a")} rg BT /${font} ${line.size || 10} Tf ${line.x} ${line.y} Td (${escapePdfText(line.text)}) Tj ET`;
+        }
         const font = line.bold ? "F2" : "F1";
-        return `BT /${font} ${line.size || 10} Tf ${line.x} ${line.y} Td (${escapePdfText(line.text)}) Tj ET`;
+        return `${hexToRgb("17202a")} rg BT /${font} ${line.size || 10} Tf ${line.x} ${line.y} Td (${escapePdfText(line.text)}) Tj ET`;
       })
       .join("\n");
     const contentRef = addObject(`<< /Length ${byteLength(stream)} >>\nstream\n${stream}\nendstream`);
@@ -1025,6 +1114,8 @@ function renderDrydockEditor() {
     ddSpecialEnd: "specialEnd",
     ddIntermediateStart: "intermediateStart",
     ddIntermediateEnd: "intermediateEnd",
+    ddAnnualStart: "annualStart",
+    ddAnnualEnd: "annualEnd",
     ddBottomDue: "bottomDue",
     ddPrepDays: "prepDays",
     ddProjectDays: "projectDays",
@@ -1326,6 +1417,8 @@ function bindEvents() {
       specialEnd: document.querySelector("#ddSpecialEnd").value,
       intermediateStart: document.querySelector("#ddIntermediateStart").value,
       intermediateEnd: document.querySelector("#ddIntermediateEnd").value,
+      annualStart: document.querySelector("#ddAnnualStart").value,
+      annualEnd: document.querySelector("#ddAnnualEnd").value,
       bottomDue: document.querySelector("#ddBottomDue").value,
       prepDays: Number(document.querySelector("#ddPrepDays").value || 0),
       projectDays: Number(document.querySelector("#ddProjectDays").value || 0),
@@ -1347,6 +1440,8 @@ function bindEvents() {
       specialEnd: "",
       intermediateStart: "",
       intermediateEnd: "",
+      annualStart: "",
+      annualEnd: "",
       bottomDue: "",
       prepDays: 30,
       projectDays: 15,

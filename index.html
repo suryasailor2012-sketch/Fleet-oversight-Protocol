@@ -6,7 +6,7 @@
     <title>Fleet Technical Oversight</title>
     <meta name="theme-color" content="#10243a" />
     <link rel="manifest" href="manifest.webmanifest" />
-    <link rel="stylesheet" href="styles.css?v=20260610-pdf2" />
+    <link rel="stylesheet" href="styles.css?v=20260610-pdf-header" />
   </head>
   <body>
     <div class="app-shell">
@@ -326,6 +326,14 @@
                   <input id="ddIntermediateEnd" type="date" />
                 </label>
                 <label>
+                  <span>Annual survey window opens</span>
+                  <input id="ddAnnualStart" type="date" />
+                </label>
+                <label>
+                  <span>Annual survey window closes</span>
+                  <input id="ddAnnualEnd" type="date" />
+                </label>
+                <label>
                   <span>Bottom survey closing date</span>
                   <input id="ddBottomDue" type="date" />
                 </label>
@@ -517,6 +525,6 @@
     </section>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="script.js?v=20260610-pdf2"></script>
+    <script src="script.js?v=20260610-pdf-header"></script>
   </body>
 </html>
