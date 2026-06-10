@@ -397,6 +397,172 @@ function money(value) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(value);
 }
 
+function escapePdfText(text) {
+  return String(text ?? "")
+    .replace(/\\/g, "\\\\")
+    .replace(/\(/g, "\\(")
+    .replace(/\)/g, "\\)")
+    .replace(/\r?\n/g, " ");
+}
+
+function wrapPdfText(text, maxChars = 95) {
+  const words = String(text ?? "").replace(/\s+/g, " ").trim().split(" ");
+  const lines = [];
+  let line = "";
+  words.forEach((word) => {
+    if (!word) return;
+    const next = line ? `${line} ${word}` : word;
+    if (next.length > maxChars) {
+      if (line) lines.push(line);
+      line = word;
+    } else {
+      line = next;
+    }
+  });
+  if (line) lines.push(line);
+  return lines.length ? lines : [""];
+}
+
+function buildMonthlyReportLines(report) {
+  const vessel = vessels.find((item) => item.vessel === report.vessel);
+  const relatedClaims = claims.filter((claim) => claim.vessel === report.vessel);
+  const drydockPlan = drydockPlans.find((plan) => plan.vessel === report.vessel);
+  const schedule = drydockPlan ? calculateDrydockSchedule(drydockPlan) : null;
+  const lines = [];
+
+  lines.push({ text: "Fleet Technical Oversight - Monthly Vessel Report", size: 16, bold: true });
+  lines.push({ text: `Vessel: ${report.vessel}`, size: 13, bold: true });
+  lines.push({ text: `Period: ${report.period} | Status: ${report.status} | Average Score: ${reportAverage(report)}`, size: 10 });
+  lines.push({ text: `Owner: ${vessel?.owner || "-"} | Class: ${vessel?.classSociety || "-"} | Flag: ${vessel?.flag || "-"} | IMO: ${vessel?.imo || "-"}`, size: 10 });
+  lines.push({ text: `Marine Supt.: ${vessel?.marine || "-"} | Technical Supt.: ${vessel?.technical || "-"}`, size: 10 });
+  lines.push({ text: " ", size: 8 });
+  lines.push({ text: "Major Technical / Operational Remarks", size: 12, bold: true });
+  wrapPdfText(report.remarks || "-", 100).forEach((line) => lines.push({ text: line, size: 10 }));
+  lines.push({ text: " ", size: 8 });
+
+  categories.forEach((category) => {
+    lines.push({ text: `${category} - Category Score ${report.scores[category].toFixed(1)}`, size: 12, bold: true });
+    report.parameters[category].forEach((parameter, index) => {
+      lines.push({ text: `${index + 1}. ${parameter.name} | Score ${parameter.score.toFixed(1)}`, size: 10, bold: true });
+      if (parameter.guidance) {
+        wrapPdfText(`Guidance: ${parameter.guidance}`, 100).forEach((line) => lines.push({ text: line, size: 9 }));
+      }
+      Object.entries(parameter.fieldValues || {}).forEach(([field, value]) => {
+        wrapPdfText(`${field}: ${value || "-"}`, 100).forEach((line) => lines.push({ text: line, size: 9 }));
+      });
+      wrapPdfText(`Comments / action plan: ${parameter.comment || "-"}`, 100).forEach((line) => lines.push({ text: line, size: 9 }));
+    });
+    lines.push({ text: " ", size: 6 });
+  });
+
+  lines.push({ text: "Claims / Recoverables", size: 12, bold: true });
+  if (relatedClaims.length) {
+    relatedClaims.forEach((claim) => {
+      wrapPdfText(`${claim.type}: ${money(claim.amount)} | Target: ${claim.target || "-"} | ${claim.description || "-"}`, 100).forEach((line) => lines.push({ text: line, size: 9 }));
+    });
+  } else {
+    lines.push({ text: "No claims recorded for this vessel.", size: 9 });
+  }
+  lines.push({ text: " ", size: 8 });
+
+  lines.push({ text: "Dry Dock Planning", size: 12, bold: true });
+  if (schedule) {
+    lines.push({ text: `Bottom survey due: ${formatDate(schedule.bottomDue)} | Days left: ${schedule.daysUntilBottomDue ?? "N/A"}`, size: 9 });
+    lines.push({ text: `Preparation starts: ${formatDate(schedule.preparationStart)} | Tentative docking: ${formatDate(schedule.dockingStart)} to ${formatDate(schedule.dockingEnd)}`, size: 9 });
+    if (schedule.issues.length) {
+      schedule.issues.forEach((issue) => lines.push({ text: `Planning issue: ${issue}`, size: 9 }));
+    }
+  } else {
+    lines.push({ text: "No dry dock plan recorded for this vessel.", size: 9 });
+  }
+  lines.push({ text: " ", size: 8 });
+  lines.push({ text: `Generated: ${new Date().toLocaleString()}`, size: 8 });
+  return lines;
+}
+
+function createPdfFromLines(lines) {
+  const pageWidth = 595;
+  const pageHeight = 842;
+  const margin = 42;
+  const lineGap = 4;
+  const pages = [];
+  let current = [];
+  let y = pageHeight - margin;
+
+  function addLine(line) {
+    const size = line.size || 10;
+    const height = size + lineGap;
+    if (y - height < margin) {
+      pages.push(current);
+      current = [];
+      y = pageHeight - margin;
+    }
+    current.push({ ...line, x: margin, y });
+    y -= height;
+  }
+
+  lines.forEach((line) => addLine(line));
+  if (current.length) pages.push(current);
+
+  const objects = [];
+  const addObject = (body) => {
+    objects.push(body);
+    return objects.length;
+  };
+
+  const fontRegular = addObject("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
+  const fontBold = addObject("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>");
+  const pageRefs = [];
+
+  pages.forEach((page) => {
+    const stream = page
+      .map((line) => {
+        const font = line.bold ? "F2" : "F1";
+        return `BT /${font} ${line.size || 10} Tf ${line.x} ${line.y} Td (${escapePdfText(line.text)}) Tj ET`;
+      })
+      .join("\n");
+    const contentRef = addObject(`<< /Length ${Buffer.byteLength(stream, "utf8")} >>\nstream\n${stream}\nendstream`);
+    const pageRef = addObject(`<< /Type /Page /Parent 0 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] /Resources << /Font << /F1 ${fontRegular} 0 R /F2 ${fontBold} 0 R >> >> /Contents ${contentRef} 0 R >>`);
+    pageRefs.push(pageRef);
+  });
+
+  const pagesRef = addObject(`<< /Type /Pages /Kids [${pageRefs.map((ref) => `${ref} 0 R`).join(" ")}] /Count ${pageRefs.length} >>`);
+  pageRefs.forEach((pageRef) => {
+    objects[pageRef - 1] = objects[pageRef - 1].replace("/Parent 0 0 R", `/Parent ${pagesRef} 0 R`);
+  });
+  const catalogRef = addObject(`<< /Type /Catalog /Pages ${pagesRef} 0 R >>`);
+
+  let pdf = "%PDF-1.4\n";
+  const offsets = [0];
+  objects.forEach((object, index) => {
+    offsets.push(Buffer.byteLength(pdf, "utf8"));
+    pdf += `${index + 1} 0 obj\n${object}\nendobj\n`;
+  });
+  const xrefOffset = Buffer.byteLength(pdf, "utf8");
+  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  offsets.slice(1).forEach((offset) => {
+    pdf += `${String(offset).padStart(10, "0")} 00000 n \n`;
+  });
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root ${catalogRef} 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
+  return new Blob([pdf], { type: "application/pdf" });
+}
+
+function downloadMonthlyReportPdf(vesselName) {
+  const report = reports.find((item) => item.vessel === vesselName);
+  if (!report) {
+    showToast("No monthly report found for this vessel.");
+    return;
+  }
+  const blob = createPdfFromLines(buildMonthlyReportLines(report));
+  const url = URL.createObjectURL(blob);
+  const filename = `${report.vessel.replace(/[^a-z0-9]+/gi, "_")}_${report.period.replace(/[^a-z0-9]+/gi, "_")}_Monthly_Report.pdf`;
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
 function parseDate(value) {
   return value ? new Date(`${value}T00:00:00`) : null;
 }
@@ -784,6 +950,7 @@ function renderReviewQueue() {
         <article class="review-card">
           <strong>${report.vessel} <span class="score-pill ${status.className}">${score}</span></strong>
           <p>${report.status}. ${report.openIssues} open technical items. ${report.remarks}</p>
+          <button class="secondary-action pdf-report-button" data-report-pdf="${report.vessel}">Download PDF</button>
         </article>
       `;
     })
@@ -1112,6 +1279,11 @@ function bindEvents() {
     saveAppState();
     showToast("Draft report saved locally.");
   });
+  document.querySelector("#downloadReportPdf").addEventListener("click", () => {
+    const selected = document.querySelector("#reportVessel").value;
+    saveAppState();
+    downloadMonthlyReportPdf(selected);
+  });
   document.querySelector("#submitReport").addEventListener("click", () => {
     const selected = document.querySelector("#reportVessel").value;
     const report = reports.find((item) => item.vessel === selected);
@@ -1120,6 +1292,12 @@ function bindEvents() {
     renderReportEditor();
     renderReviewQueue();
     showToast(`${selected} submitted for owner review.`);
+  });
+
+  document.querySelector("#reviewQueue").addEventListener("click", (event) => {
+    const vesselName = event.target.dataset.reportPdf;
+    if (!vesselName) return;
+    downloadMonthlyReportPdf(vesselName);
   });
 
   document.querySelector("#addClaim").addEventListener("click", () => {

@@ -433,6 +433,10 @@ textarea {
   line-height: 1.45;
 }
 
+.pdf-report-button {
+  margin-top: 10px;
+}
+
 .meta-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
