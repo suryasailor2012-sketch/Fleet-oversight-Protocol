@@ -1,0 +1,12 @@
+{
+  "name": "fleet-technical-oversight",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Fleet technical reporting, dry dock planning, claims tracking and owner review prototype.",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

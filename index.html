@@ -1,0 +1,448 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Fleet Technical Oversight</title>
+    <meta name="theme-color" content="#10243a" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="stylesheet" href="styles.css?v=20260604-offline" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">FT</div>
+          <div>
+            <h1>Fleet Technical</h1>
+            <p>Owner oversight platform</p>
+          </div>
+        </div>
+        <nav aria-label="Main navigation">
+          <button class="nav-item active" data-view="dashboard">
+            <span>Dashboard</span>
+          </button>
+          <button class="nav-item" data-view="vessels">
+            <span>Vessels</span>
+          </button>
+          <button class="nav-item" data-view="reports">
+            <span>Monthly Reports</span>
+          </button>
+          <button class="nav-item" data-view="claims">
+            <span>Claims</span>
+          </button>
+          <button class="nav-item" data-view="drydock">
+            <span>Dry Dock Planner</span>
+          </button>
+          <button class="nav-item" data-view="aiReview">
+            <span>AI Review</span>
+          </button>
+          <button class="nav-item" data-view="review">
+            <span>Owner Review</span>
+          </button>
+        </nav>
+        <div class="sidebar-note">
+          <strong>Reporting period</strong>
+          <span>May 2026</span>
+        </div>
+      </aside>
+
+      <main>
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Technical manager workspace</p>
+            <h2 id="viewTitle">Fleet Dashboard</h2>
+          </div>
+          <div class="topbar-actions">
+            <span class="sync-status" id="syncStatus">Local mode</span>
+            <label class="search-box">
+              <span>Search</span>
+              <input id="globalSearch" type="search" placeholder="Vessel, IMO, owner, superintendent" />
+            </label>
+            <button class="primary-action" id="exportSummary">Export Summary</button>
+          </div>
+        </header>
+
+        <section class="view active" id="dashboard">
+          <div class="kpi-grid">
+            <article class="kpi">
+              <span>Fleet vessels</span>
+              <strong id="fleetCount">0</strong>
+            </article>
+            <article class="kpi">
+              <span>Average score</span>
+              <strong id="avgScore">0.0</strong>
+            </article>
+            <article class="kpi">
+              <span>Critical items</span>
+              <strong id="criticalCount">0</strong>
+            </article>
+            <article class="kpi">
+              <span>Claims exposure</span>
+              <strong id="claimsExposure">$0</strong>
+            </article>
+          </div>
+
+          <div class="dashboard-layout">
+            <section class="panel fleet-health">
+              <div class="panel-heading">
+                <div>
+                  <h3>Fleet Health</h3>
+                  <p>Owner-facing score by vessel</p>
+                </div>
+                <select id="ownerFilter" aria-label="Filter by owner">
+                  <option value="all">All owners</option>
+                </select>
+              </div>
+              <div class="fleet-table-wrap">
+                <table class="data-table" id="fleetTable">
+                  <thead>
+                    <tr>
+                      <th>Vessel</th>
+                      <th>Owner</th>
+                      <th>Class</th>
+                      <th>Score</th>
+                      <th>Status</th>
+                      <th>Open Issues</th>
+                    </tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-heading">
+                <div>
+                  <h3>Category Performance</h3>
+                  <p>Average score across current fleet</p>
+                </div>
+              </div>
+              <div id="categoryBars" class="bar-list"></div>
+            </section>
+          </div>
+
+          <section class="panel">
+            <div class="panel-heading">
+              <div>
+                <h3>Priority Technical Items</h3>
+                <p>Low scores, overdue targets, off-hire impact</p>
+              </div>
+            </div>
+            <div id="priorityItems" class="issue-grid"></div>
+          </section>
+        </section>
+
+        <section class="view" id="vessels">
+          <div class="panel">
+            <div class="panel-heading">
+              <div>
+                <h3>Vessel Register</h3>
+                <p>Imported from the attached vessel management list</p>
+              </div>
+              <button class="secondary-action" id="downloadRegister">Download CSV</button>
+            </div>
+            <div class="fleet-table-wrap">
+              <table class="data-table" id="vesselRegister">
+                <thead>
+                  <tr>
+                    <th>Owner</th>
+                    <th>Vessel</th>
+                    <th>Class</th>
+                    <th>Flag</th>
+                    <th>IMO</th>
+                    <th>Marine Supt.</th>
+                    <th>Technical Supt.</th>
+                    <th>Electrical Supt.</th>
+                    <th>Purchaser</th>
+                    <th>Manning</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section class="view" id="reports">
+          <div class="report-layout">
+            <section class="panel report-editor">
+              <div class="panel-heading">
+                <div>
+                  <h3>Monthly Vessel Report</h3>
+                  <p>Structured replacement for each vessel worksheet</p>
+                </div>
+                <select id="reportVessel" aria-label="Select vessel"></select>
+              </div>
+              <div id="reportMeta" class="meta-grid"></div>
+              <div id="scoreInputs" class="score-grid"></div>
+              <label class="field-block">
+                <span>Major technical / operational remarks</span>
+                <textarea id="reportRemarks" rows="5"></textarea>
+              </label>
+              <div class="form-actions">
+                <button class="primary-action" id="saveReport">Save Draft</button>
+                <button class="secondary-action" id="submitReport">Submit for Owner Review</button>
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-heading">
+                <div>
+                  <h3>Report Checklist</h3>
+                  <p>Fields expected before submission</p>
+                </div>
+              </div>
+              <div class="checklist" id="reportChecklist"></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="claims">
+          <div class="claims-layout">
+            <section class="panel">
+              <div class="panel-heading">
+                <div>
+                  <h3>Operations & Claims</h3>
+                  <p>Recoverables, claims awaiting issue, insurance claims</p>
+                </div>
+                <button class="secondary-action" id="addClaim">Add Claim</button>
+              </div>
+              <div id="claimsList" class="claim-list"></div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-heading">
+                <div>
+                  <h3>Claim Entry</h3>
+                  <p>Capture exposure and time-bar dates</p>
+                </div>
+              </div>
+              <form id="claimForm" class="claim-form">
+                <label>
+                  <span>Vessel</span>
+                  <select id="claimVessel"></select>
+                </label>
+                <label>
+                  <span>Type</span>
+                  <select id="claimType">
+                    <option>Charterers Recoverable</option>
+                    <option>Awaiting Issue</option>
+                    <option>Insurance Claim</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Amount USD</span>
+                  <input id="claimAmount" type="number" min="0" step="100" value="1000" />
+                </label>
+                <label>
+                  <span>Time Bar / Target Date</span>
+                  <input id="claimTarget" type="date" />
+                </label>
+                <label class="field-block">
+                  <span>Description & current status</span>
+                  <textarea id="claimDescription" rows="4">Awaiting supporting documents from vessel.</textarea>
+                </label>
+              </form>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="drydock">
+          <div class="kpi-grid">
+            <article class="kpi">
+              <span>Plans tracked</span>
+              <strong id="ddPlanCount">0</strong>
+            </article>
+            <article class="kpi">
+              <span>Inside 6 months</span>
+              <strong id="ddSixMonthCount">0</strong>
+            </article>
+            <article class="kpi">
+              <span>Needs review</span>
+              <strong id="ddReviewCount">0</strong>
+            </article>
+            <article class="kpi">
+              <span>Next bottom survey</span>
+              <strong id="ddNextSurvey">-</strong>
+            </article>
+          </div>
+
+          <div class="drydock-layout">
+            <section class="panel">
+              <div class="panel-heading">
+                <div>
+                  <h3>Dry Dock Planning Board</h3>
+                  <p>Survey windows, docking period and notice status</p>
+                </div>
+                <button class="secondary-action" id="downloadDrydock">Download CSV</button>
+              </div>
+              <div class="fleet-table-wrap">
+                <table class="data-table" id="drydockTable">
+                  <thead>
+                    <tr>
+                      <th>Vessel</th>
+                      <th>Bottom Survey Due</th>
+                      <th>Days Left</th>
+                      <th>Preparation Starts</th>
+                      <th>Tentative Docking</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="panel drydock-editor">
+              <div class="panel-heading">
+                <div>
+                  <h3>Planner Entry</h3>
+                  <p>Combined with the vessel register</p>
+                </div>
+                <select id="ddVessel" aria-label="Select dry dock vessel"></select>
+              </div>
+              <div class="planning-form">
+                <label>
+                  <span>Special survey window opens</span>
+                  <input id="ddSpecialStart" type="date" />
+                </label>
+                <label>
+                  <span>Special survey window closes</span>
+                  <input id="ddSpecialEnd" type="date" />
+                </label>
+                <label>
+                  <span>Intermediate survey window opens</span>
+                  <input id="ddIntermediateStart" type="date" />
+                </label>
+                <label>
+                  <span>Intermediate survey window closes</span>
+                  <input id="ddIntermediateEnd" type="date" />
+                </label>
+                <label>
+                  <span>Bottom survey closing date</span>
+                  <input id="ddBottomDue" type="date" />
+                </label>
+                <label>
+                  <span>Preparation days required</span>
+                  <input id="ddPrepDays" type="number" min="0" value="30" />
+                </label>
+                <label>
+                  <span>Project days required</span>
+                  <input id="ddProjectDays" type="number" min="0" value="15" />
+                </label>
+                <label>
+                  <span>Time charter window starts</span>
+                  <input id="ddCharterStart" type="date" />
+                </label>
+                <label>
+                  <span>Time charter window ends</span>
+                  <input id="ddCharterEnd" type="date" />
+                </label>
+                <label class="field-block">
+                  <span>Notes</span>
+                  <textarea id="ddNotes" rows="3" placeholder="Major repair scope, yard preference, restrictions, class remarks"></textarea>
+                </label>
+              </div>
+              <div class="form-actions">
+                <button class="primary-action" id="saveDrydock">Save Plan</button>
+                <button class="secondary-action" id="newDrydock">Reset Dates</button>
+              </div>
+            </section>
+          </div>
+
+          <div class="drydock-layout">
+            <section class="panel">
+              <div class="panel-heading">
+                <div>
+                  <h3>Decision Review</h3>
+                  <p>Calculated from survey and charter windows</p>
+                </div>
+              </div>
+              <div id="ddDecision" class="decision-output"></div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-heading">
+                <div>
+                  <h3>Notification Queue</h3>
+                  <p>6 months, 3 months, 60 days and 40 days notices</p>
+                </div>
+              </div>
+              <div id="ddNotifications" class="notice-list"></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="aiReview">
+          <div class="kpi-grid">
+            <article class="kpi">
+              <span>High risk vessels</span>
+              <strong id="aiHighRisk">0</strong>
+            </article>
+            <article class="kpi">
+              <span>Predicted average risk</span>
+              <strong id="aiAverageRisk">0%</strong>
+            </article>
+            <article class="kpi">
+              <span>Near DD window</span>
+              <strong id="aiNearDrydock">0</strong>
+            </article>
+            <article class="kpi">
+              <span>Claims flagged</span>
+              <strong id="aiClaimsFlagged">0</strong>
+            </article>
+          </div>
+
+          <div class="dashboard-layout">
+            <section class="panel">
+              <div class="panel-heading">
+                <div>
+                  <h3>Predictive Vessel Review</h3>
+                  <p>Risk forecast using technical scores, claims and DD planning</p>
+                </div>
+                <select id="aiVesselFilter" aria-label="Filter AI review">
+                  <option value="all">All vessels</option>
+                  <option value="high">High risk only</option>
+                  <option value="medium">Medium and high</option>
+                </select>
+              </div>
+              <div id="aiRiskList" class="ai-risk-list"></div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-heading">
+                <div>
+                  <h3>Prediction Drivers</h3>
+                  <p>What the algorithm considers most important</p>
+                </div>
+              </div>
+              <div class="driver-list">
+                <div class="driver-item"><strong>Technical degradation</strong><span>Low category and parameter scores increase risk.</span></div>
+                <div class="driver-item"><strong>Incident exposure</strong><span>Off-hire, claims and owner cost impact increase risk.</span></div>
+                <div class="driver-item"><strong>Compliance timing</strong><span>Documents, inspections, class items and DD windows affect urgency.</span></div>
+                <div class="driver-item"><strong>Management readiness</strong><span>Missing remarks or planning conflicts reduce confidence.</span></div>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="review">
+          <div class="panel">
+            <div class="panel-heading">
+              <div>
+                <h3>Owner Review Queue</h3>
+                <p>Submitted reports requiring owner attention</p>
+              </div>
+              <button class="primary-action" id="approveAll">Approve Clear Items</button>
+            </div>
+            <div id="reviewQueue" class="review-list"></div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script src="script.js?v=20260604-offline"></script>
+  </body>
+</html>
