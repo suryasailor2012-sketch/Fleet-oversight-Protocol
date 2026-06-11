@@ -58,6 +58,11 @@ ADMIN_PASSWORD=choose-a-strong-password
 
 After signing in as admin, open the **Users** tab and create technical manager accounts.
 
+All signed-in users can select **Change Password** in the top bar and update their own
+password after entering their current password. Administrators can also open **Users**
+and assign a temporary replacement password to any account. An administrator reset
+signs that user out of all active sessions. Passwords must contain at least 8 characters.
+
 ## Recommended Railway Volume
 
 To keep the JSON data after redeploys, attach a Railway volume and set:

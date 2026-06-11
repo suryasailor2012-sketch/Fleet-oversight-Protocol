@@ -6,7 +6,7 @@
     <title>Fleet Technical Oversight</title>
     <meta name="theme-color" content="#10243a" />
     <link rel="manifest" href="manifest.webmanifest" />
-    <link rel="stylesheet" href="styles.css?v=20260610-archive" />
+    <link rel="stylesheet" href="styles.css?v=20260611-passwords" />
   </head>
   <body>
     <div class="app-shell">
@@ -67,6 +67,7 @@
               <input id="globalSearch" type="search" placeholder="Vessel, IMO, owner, superintendent" />
             </label>
             <button class="primary-action" id="exportSummary">Export Summary</button>
+            <button class="secondary-action" id="changePasswordButton">Change Password</button>
             <button class="secondary-action" id="logoutButton">Logout</button>
           </div>
         </header>
@@ -573,7 +574,32 @@
       </form>
     </section>
 
+    <section class="password-overlay" id="passwordOverlay">
+      <form class="login-panel" id="changePasswordForm">
+        <div>
+          <h3>Change Password</h3>
+          <p class="login-help">Confirm your current password, then choose a new password with at least 8 characters.</p>
+        </div>
+        <label>
+          <span>Current password</span>
+          <input id="currentPassword" type="password" required autocomplete="current-password" />
+        </label>
+        <label>
+          <span>New password</span>
+          <input id="changedPassword" type="password" required minlength="8" autocomplete="new-password" />
+        </label>
+        <label>
+          <span>Confirm new password</span>
+          <input id="confirmChangedPassword" type="password" required minlength="8" autocomplete="new-password" />
+        </label>
+        <div class="form-actions">
+          <button class="primary-action" type="submit">Update Password</button>
+          <button class="secondary-action" id="cancelPasswordChange" type="button">Cancel</button>
+        </div>
+      </form>
+    </section>
+
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="script.js?v=20260610-archive"></script>
+    <script src="script.js?v=20260611-passwords"></script>
   </body>
 </html>

@@ -1110,6 +1110,10 @@ async function renderUsers() {
             <strong>${user.name}</strong>
             <p>${user.email}</p>
             <p>Role: ${user.role.replace("_", " ")}</p>
+            <div class="user-reset-row">
+              <input type="password" minlength="8" placeholder="Temporary password" aria-label="New password for ${user.name}" data-reset-password-input="${user.id}" />
+              <button class="secondary-action" type="button" data-reset-password="${user.id}">Reset Password</button>
+            </div>
           </article>
         `,
       )
@@ -1427,6 +1431,62 @@ function bindEvents() {
     applyAuthState();
     updateSyncStatus();
     showToast("Signed out.");
+  });
+
+  document.querySelector("#changePasswordButton").addEventListener("click", () => {
+    document.body.classList.add("changing-password");
+    document.querySelector("#currentPassword").focus();
+  });
+
+  document.querySelector("#cancelPasswordChange").addEventListener("click", () => {
+    document.querySelector("#changePasswordForm").reset();
+    document.body.classList.remove("changing-password");
+  });
+
+  document.querySelector("#changePasswordForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const newPassword = document.querySelector("#changedPassword").value;
+    const confirmation = document.querySelector("#confirmChangedPassword").value;
+    if (newPassword !== confirmation) {
+      showToast("The new passwords do not match.");
+      return;
+    }
+    try {
+      await apiRequest("/api/auth/change-password", {
+        method: "POST",
+        body: JSON.stringify({
+          currentPassword: document.querySelector("#currentPassword").value,
+          newPassword,
+        }),
+      });
+      event.target.reset();
+      document.body.classList.remove("changing-password");
+      showToast("Password changed successfully.");
+    } catch (error) {
+      showToast(error.message);
+    }
+  });
+
+  document.querySelector("#usersList").addEventListener("click", async (event) => {
+    const button = event.target.closest("[data-reset-password]");
+    if (!button) return;
+    const userId = button.dataset.resetPassword;
+    const passwordInput = document.querySelector(`[data-reset-password-input="${userId}"]`);
+    const newPassword = passwordInput?.value || "";
+    if (newPassword.length < 8) {
+      showToast("Temporary password must be at least 8 characters.");
+      return;
+    }
+    try {
+      await apiRequest(`/api/users/${encodeURIComponent(userId)}/reset-password`, {
+        method: "POST",
+        body: JSON.stringify({ newPassword }),
+      });
+      passwordInput.value = "";
+      showToast("User password reset. Their active sessions were signed out.");
+    } catch (error) {
+      showToast(error.message);
+    }
   });
 
   document.querySelector("#userForm").addEventListener("submit", async (event) => {

@@ -166,6 +166,8 @@ function safeFilePath(urlPath) {
 }
 
 async function handleApi(request, response) {
+  const urlPath = request.url.split("?")[0];
+
   if (request.url.startsWith("/api/health")) {
     sendJson(response, 200, { ok: true, service: "fleet-technical-oversight" });
     return true;
@@ -203,6 +205,65 @@ async function handleApi(request, response) {
     clearSessionCookie(response);
     sendJson(response, 200, { ok: true });
     return true;
+  }
+
+  if (urlPath === "/api/auth/change-password" && request.method === "POST") {
+    const signedInUser = requireUser(request, response);
+    if (!signedInUser) return true;
+    try {
+      const body = JSON.parse(await readRequestBody(request) || "{}");
+      const currentPassword = String(body.currentPassword || "");
+      const newPassword = String(body.newPassword || "");
+      if (newPassword.length < 8) {
+        sendJson(response, 400, { error: "New password must be at least 8 characters" });
+        return true;
+      }
+      const users = readUsers();
+      const user = users.find((item) => item.id === signedInUser.id);
+      if (!user || !verifyPassword(currentPassword, user.passwordHash)) {
+        sendJson(response, 401, { error: "Current password is incorrect" });
+        return true;
+      }
+      user.passwordHash = hashPassword(newPassword);
+      user.passwordUpdatedAt = new Date().toISOString();
+      writeUsers(users);
+      sendJson(response, 200, { ok: true });
+      return true;
+    } catch (error) {
+      sendJson(response, 400, { error: error.message });
+      return true;
+    }
+  }
+
+  const resetPasswordMatch = urlPath.match(/^\/api\/users\/([^/]+)\/reset-password$/);
+  if (resetPasswordMatch && request.method === "POST") {
+    if (!requireAdmin(request, response)) return true;
+    try {
+      const body = JSON.parse(await readRequestBody(request) || "{}");
+      const newPassword = String(body.newPassword || "");
+      if (newPassword.length < 8) {
+        sendJson(response, 400, { error: "New password must be at least 8 characters" });
+        return true;
+      }
+      const userId = decodeURIComponent(resetPasswordMatch[1]);
+      const users = readUsers();
+      const user = users.find((item) => item.id === userId);
+      if (!user) {
+        sendJson(response, 404, { error: "User not found" });
+        return true;
+      }
+      user.passwordHash = hashPassword(newPassword);
+      user.passwordUpdatedAt = new Date().toISOString();
+      writeUsers(users);
+      for (const [sessionId, sessionUserId] of sessions.entries()) {
+        if (sessionUserId === user.id) sessions.delete(sessionId);
+      }
+      sendJson(response, 200, { ok: true, user: publicUser(user) });
+      return true;
+    } catch (error) {
+      sendJson(response, 400, { error: error.message });
+      return true;
+    }
   }
 
   if (request.url.startsWith("/api/users") && request.method === "GET") {

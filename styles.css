@@ -629,7 +629,8 @@ textarea {
   font-weight: 700;
 }
 
-.login-overlay {
+.login-overlay,
+.password-overlay {
   position: fixed;
   inset: 0;
   z-index: 20;
@@ -640,6 +641,10 @@ textarea {
 }
 
 body.requires-login .login-overlay {
+  display: grid;
+}
+
+body.changing-password .password-overlay {
   display: grid;
 }
 
@@ -668,6 +673,23 @@ body.requires-login .app-shell {
   color: var(--muted);
   font-size: 12px;
   line-height: 1.4;
+}
+
+.user-reset-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) auto;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.user-reset-row input {
+  min-width: 0;
+}
+
+@media (max-width: 620px) {
+  .user-reset-row {
+    grid-template-columns: 1fr;
+  }
 }
 
 .ai-risk-list,
