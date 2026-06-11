@@ -1,9 +1,9 @@
-const CACHE_NAME = "fleet-technical-oversight-v20260611-passwords";
+const CACHE_NAME = "fleet-technical-oversight-v20260611-passwords2";
 const APP_ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=20260611-passwords",
-  "./script.js?v=20260611-passwords",
+  "./styles.css?v=20260611-passwords2",
+  "./script.js?v=20260611-passwords2",
   "./manifest.webmanifest"
 ];
 
@@ -27,15 +27,15 @@ self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
 
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      if (cached) return cached;
-      return fetch(event.request)
-        .then((response) => {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
-          return response;
-        })
-        .catch(() => caches.match("./index.html"));
-    })
+    fetch(event.request)
+      .then((response) => {
+        const copy = response.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+        return response;
+      })
+      .catch(async () => {
+        const cached = await caches.match(event.request);
+        return cached || caches.match("./index.html");
+      })
   );
 });

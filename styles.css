@@ -682,6 +682,13 @@ body.requires-login .app-shell {
   margin-top: 12px;
 }
 
+.reset-password-label {
+  display: block;
+  margin-top: 14px;
+  color: var(--ink);
+  font-size: 12px;
+}
+
 .user-reset-row input {
   min-width: 0;
 }

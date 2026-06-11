@@ -1110,8 +1110,9 @@ async function renderUsers() {
             <strong>${user.name}</strong>
             <p>${user.email}</p>
             <p>Role: ${user.role.replace("_", " ")}</p>
+            <strong class="reset-password-label">Administrator password reset</strong>
             <div class="user-reset-row">
-              <input type="password" minlength="8" placeholder="Temporary password" aria-label="New password for ${user.name}" data-reset-password-input="${user.id}" />
+              <input type="password" minlength="8" placeholder="Enter temporary password" aria-label="New password for ${user.name}" data-reset-password-input="${user.id}" />
               <button class="secondary-action" type="button" data-reset-password="${user.id}">Reset Password</button>
             </div>
           </article>
