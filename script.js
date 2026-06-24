@@ -321,6 +321,13 @@ function applyAuthState() {
   }
 }
 
+function resetDashboardFilters() {
+  const search = document.querySelector("#globalSearch");
+  const ownerFilter = document.querySelector("#ownerFilter");
+  if (search) search.value = "";
+  if (ownerFilter) ownerFilter.value = "all";
+}
+
 function applyVesselAccess() {
   const hasFleetAccess = currentUser?.role === "admin";
   const assigned = new Set(currentUser?.assignedVessels || []);
@@ -889,6 +896,10 @@ function filteredVessels() {
 }
 
 function renderDashboard() {
+  const search = document.querySelector("#globalSearch");
+  if (currentUser?.email && search.value.trim().toLowerCase() === currentUser.email.toLowerCase()) {
+    search.value = "";
+  }
   const visible = filteredVessels();
   const visibleNames = new Set(visible.map((vessel) => vessel.vessel));
   const visibleReports = reports.filter((report) => visibleNames.has(report.vessel));
@@ -1457,6 +1468,7 @@ function bindEvents() {
       currentUser = data.user;
       applyAuthState();
       await loadRemoteState();
+      resetDashboardFilters();
       renderDashboard();
       renderReportEditor();
       renderClaims();
@@ -1772,6 +1784,7 @@ async function init() {
   if (currentUser) {
     await loadRemoteState();
   }
+  resetDashboardFilters();
   renderDashboard();
   renderVesselRegister();
   renderReportEditor();
