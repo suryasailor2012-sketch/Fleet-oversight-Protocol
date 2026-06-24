@@ -94,6 +94,49 @@ function writeState(state) {
   return payload;
 }
 
+function normalizedAssignedVessels(user) {
+  return [...new Set((user?.assignedVessels || []).map((name) => String(name).trim()).filter(Boolean))];
+}
+
+function userCanAccessVessel(user, vesselName) {
+  return user?.role === "admin" || normalizedAssignedVessels(user).includes(String(vesselName || ""));
+}
+
+function filterStateForUser(state, user) {
+  if (!state) return {};
+  if (user.role === "admin") return state;
+  const filterItems = (items) => (Array.isArray(items) ? items.filter((item) => userCanAccessVessel(user, item.vessel)) : []);
+  return {
+    reports: filterItems(state.reports),
+    claims: filterItems(state.claims),
+    drydockPlans: filterItems(state.drydockPlans),
+    submittedReports: filterItems(state.submittedReports),
+    savedAt: state.savedAt
+  };
+}
+
+function mergeRestrictedItems(existingItems, incomingItems, user) {
+  const assigned = new Set(normalizedAssignedVessels(user));
+  const incoming = Array.isArray(incomingItems) ? incomingItems : [];
+  if (incoming.some((item) => !assigned.has(String(item.vessel || "")))) {
+    throw new Error("State contains a vessel that is not assigned to this user");
+  }
+  const preserved = (Array.isArray(existingItems) ? existingItems : []).filter((item) => !assigned.has(String(item.vessel || "")));
+  return [...preserved, ...incoming];
+}
+
+function mergeStateForUser(existingState, incomingState, user) {
+  if (user.role === "admin") return incomingState;
+  const existing = existingState || {};
+  return {
+    ...existing,
+    reports: mergeRestrictedItems(existing.reports, incomingState.reports, user),
+    claims: mergeRestrictedItems(existing.claims, incomingState.claims, user),
+    drydockPlans: mergeRestrictedItems(existing.drydockPlans, incomingState.drydockPlans, user),
+    submittedReports: mergeRestrictedItems(existing.submittedReports, incomingState.submittedReports, user)
+  };
+}
+
 function sendJson(response, status, payload) {
   response.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
@@ -266,6 +309,33 @@ async function handleApi(request, response) {
     }
   }
 
+  const vesselAccessMatch = urlPath.match(/^\/api\/users\/([^/]+)\/vessels$/);
+  if (vesselAccessMatch && request.method === "PATCH") {
+    if (!requireAdmin(request, response)) return true;
+    try {
+      const body = JSON.parse(await readRequestBody(request) || "{}");
+      if (!Array.isArray(body.assignedVessels)) {
+        sendJson(response, 400, { error: "assignedVessels must be an array" });
+        return true;
+      }
+      const userId = decodeURIComponent(vesselAccessMatch[1]);
+      const users = readUsers();
+      const user = users.find((item) => item.id === userId);
+      if (!user) {
+        sendJson(response, 404, { error: "User not found" });
+        return true;
+      }
+      user.assignedVessels = [...new Set(body.assignedVessels.map((name) => String(name).trim()).filter(Boolean))];
+      user.accessUpdatedAt = new Date().toISOString();
+      writeUsers(users);
+      sendJson(response, 200, { ok: true, user: publicUser(user) });
+      return true;
+    } catch (error) {
+      sendJson(response, 400, { error: error.message });
+      return true;
+    }
+  }
+
   if (request.url.startsWith("/api/users") && request.method === "GET") {
     if (!requireAdmin(request, response)) return true;
     sendJson(response, 200, { users: readUsers().map(publicUser) });
@@ -310,13 +380,15 @@ async function handleApi(request, response) {
   }
 
   if (request.url.startsWith("/api/state") && request.method === "GET") {
-    if (!requireUser(request, response)) return true;
-    sendJson(response, 200, readState() || {});
+    const signedInUser = requireUser(request, response);
+    if (!signedInUser) return true;
+    sendJson(response, 200, filterStateForUser(readState(), signedInUser));
     return true;
   }
 
   if (request.url.startsWith("/api/state") && request.method === "PUT") {
-    if (!requireUser(request, response)) return true;
+    const signedInUser = requireUser(request, response);
+    if (!signedInUser) return true;
     try {
       const body = await readRequestBody(request);
       const state = JSON.parse(body || "{}");
@@ -327,10 +399,12 @@ async function handleApi(request, response) {
       if (!Array.isArray(state.submittedReports)) {
         state.submittedReports = [];
       }
-      sendJson(response, 200, writeState(state));
+      const saved = writeState(mergeStateForUser(readState(), state, signedInUser));
+      sendJson(response, 200, filterStateForUser(saved, signedInUser));
       return true;
     } catch (error) {
-      sendJson(response, 400, { error: error.message });
+      const status = error.message.includes("not assigned") ? 403 : 400;
+      sendJson(response, status, { error: error.message });
       return true;
     }
   }

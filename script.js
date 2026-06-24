@@ -102,7 +102,7 @@ const reportTemplate = {
   ],
 };
 
-const vessels = [
+const fleetVessels = [
   { owner: "SEA TRANSPORT", vessel: "KINGIS", classSociety: "BUREAU VERITAS", flag: "NIGERIA", imo: "9210892", marine: "Capt. Naveen", technical: "Mr. Kishore", electrical: "Mr. Ravindra", purchaser: "Mr. Omkar", manning: "Mr. Ghag" },
   { owner: "SEA TRANSPORT", vessel: "ST ILHAAM", classSociety: "LLOYD'S REGISTER", flag: "NIGERIA", imo: "9278480", marine: "Capt. Ved", technical: "Mr. Sandesh / Mr. Jaskaran", electrical: "Mr. Upendra", purchaser: "Mr. Omkar", manning: "Ms. Rimi" },
   { owner: "SEA TRANSPORT", vessel: "ST ZEE ZEE", classSociety: "BUREAU VERITAS", flag: "NIGERIA", imo: "9241815", marine: "Capt. Ved", technical: "Mr. Kishore", electrical: "Mr. Ravindra", purchaser: "Ms. Nutan", manning: "Ms. Rimi" },
@@ -118,6 +118,7 @@ const vessels = [
   { owner: "INTERORIENT", vessel: "HW OTTO", classSociety: "RINA", flag: "LIBERIA", imo: "9394040", marine: "Capt. Gokul", technical: "Mr. Roy", electrical: "", purchaser: "", manning: "" },
   { owner: "LSC", vessel: "SV WAKILI", classSociety: "LLOYD'S REGISTER", flag: "LIBERIA", imo: "9590711", marine: "Capt. Gokul", technical: "Mr. Roy", electrical: "", purchaser: "", manning: "" },
 ];
+let vessels = [...fleetVessels];
 
 const seedScores = [8.4, 7.8, 8.1, 6.9, 7.2, 8.6, 7.5, 8.0, 8.7, 7.1, 8.3, 6.8, 8.5, 7.9];
 
@@ -312,10 +313,24 @@ async function loadCurrentUser() {
 function applyAuthState() {
   document.body.classList.toggle("requires-login", !currentUser);
   document.body.classList.toggle("is-admin", currentUser?.role === "admin");
+  applyVesselAccess();
+  populateSelects();
   const chip = document.querySelector("#currentUserChip");
   if (chip) {
     chip.textContent = currentUser ? `${currentUser.name} (${currentUser.role.replace("_", " ")})` : "Not signed in";
   }
+}
+
+function applyVesselAccess() {
+  const hasFleetAccess = currentUser?.role === "admin";
+  const assigned = new Set(currentUser?.assignedVessels || []);
+  vessels = hasFleetAccess ? [...fleetVessels] : fleetVessels.filter((vessel) => assigned.has(vessel.vessel));
+  if (!currentUser || hasFleetAccess) return;
+  const allowed = new Set(vessels.map((vessel) => vessel.vessel));
+  reports.splice(0, reports.length, ...reports.filter((report) => allowed.has(report.vessel)));
+  claims = claims.filter((claim) => allowed.has(claim.vessel));
+  drydockPlans = drydockPlans.filter((plan) => allowed.has(plan.vessel));
+  submittedReports = submittedReports.filter((report) => allowed.has(report.vessel));
 }
 
 function sampleValue(item, vesselIndex, itemIndex) {
@@ -968,6 +983,20 @@ function renderVesselRegister() {
 }
 
 function renderReportEditor() {
+  const reportButtons = ["#saveReport", "#submitReport", "#downloadReportPdf"];
+  if (!vessels.length) {
+    document.querySelector("#reportMeta").innerHTML = `<div class="empty-access-message">No vessel has been assigned to this account. Please contact the administrator.</div>`;
+    document.querySelector("#scoreInputs").innerHTML = "";
+    document.querySelector("#reportRemarks").value = "";
+    document.querySelector("#reportChecklist").innerHTML = "";
+    reportButtons.forEach((selector) => {
+      document.querySelector(selector).disabled = true;
+    });
+    return;
+  }
+  reportButtons.forEach((selector) => {
+    document.querySelector(selector).disabled = false;
+  });
   const selected = document.querySelector("#reportVessel").value || vessels[0].vessel;
   const vessel = vessels.find((item) => item.vessel === selected);
   const report = reports.find((item) => item.vessel === selected);
@@ -1110,6 +1139,18 @@ async function renderUsers() {
             <strong>${user.name}</strong>
             <p>${user.email}</p>
             <p>Role: ${user.role.replace("_", " ")}</p>
+            <strong class="reset-password-label">Vessel access</strong>
+            ${user.role === "admin"
+              ? `<p>Administrators can access all vessels.</p>`
+              : `<div class="user-vessel-grid">
+                  ${fleetVessels.map((vessel) => `
+                    <label>
+                      <input type="checkbox" value="${vessel.vessel}" data-user-vessel="${user.id}" ${user.assignedVessels.includes(vessel.vessel) ? "checked" : ""} />
+                      <span>${vessel.vessel}</span>
+                    </label>
+                  `).join("")}
+                </div>
+                <button class="primary-action save-vessel-access" type="button" data-save-vessel-access="${user.id}">Save Vessel Access</button>`}
             <strong class="reset-password-label">Administrator password reset</strong>
             <div class="user-reset-row">
               <input type="password" minlength="8" placeholder="Enter temporary password" aria-label="New password for ${user.name}" data-reset-password-input="${user.id}" />
@@ -1208,7 +1249,7 @@ function renderArchiveInfographics() {
 }
 
 function selectedDrydockPlan() {
-  const selected = document.querySelector("#ddVessel").value || vessels[0].vessel;
+  const selected = document.querySelector("#ddVessel").value || vessels[0]?.vessel;
   return drydockPlans.find((plan) => plan.vessel === selected);
 }
 
@@ -1358,6 +1399,12 @@ function populateSelects() {
   document.querySelector("#claimVessel").innerHTML = vesselOptions;
   document.querySelector("#ddVessel").innerHTML = vesselOptions;
   document.querySelector("#archiveVesselFilter").innerHTML = `<option value="all">All vessels</option>` + vesselOptions;
+  const newUserVessels = document.querySelector("#newUserVessels");
+  if (newUserVessels && !newUserVessels.children.length) {
+    newUserVessels.innerHTML = fleetVessels
+      .map((vessel) => `<label><input type="checkbox" value="${vessel.vessel}" data-new-user-vessel /><span>${vessel.vessel}</span></label>`)
+      .join("");
+  }
 }
 
 function setView(viewId) {
@@ -1469,6 +1516,23 @@ function bindEvents() {
   });
 
   document.querySelector("#usersList").addEventListener("click", async (event) => {
+    const accessButton = event.target.closest("[data-save-vessel-access]");
+    if (accessButton) {
+      const userId = accessButton.dataset.saveVesselAccess;
+      const assignedVessels = [...document.querySelectorAll(`[data-user-vessel="${userId}"]:checked`)].map((input) => input.value);
+      try {
+        await apiRequest(`/api/users/${encodeURIComponent(userId)}/vessels`, {
+          method: "PATCH",
+          body: JSON.stringify({ assignedVessels }),
+        });
+        await renderUsers();
+        showToast(`Vessel access saved for ${assignedVessels.length} vessel${assignedVessels.length === 1 ? "" : "s"}.`);
+      } catch (error) {
+        showToast(error.message);
+      }
+      return;
+    }
+
     const button = event.target.closest("[data-reset-password]");
     if (!button) return;
     const userId = button.dataset.resetPassword;
@@ -1500,6 +1564,7 @@ function bindEvents() {
           email: document.querySelector("#newUserEmail").value,
           password: document.querySelector("#newUserPassword").value,
           role: document.querySelector("#newUserRole").value,
+          assignedVessels: [...document.querySelectorAll("[data-new-user-vessel]:checked")].map((input) => input.value),
         }),
       });
       event.target.reset();

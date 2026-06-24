@@ -58,6 +58,17 @@ ADMIN_PASSWORD=choose-a-strong-password
 
 After signing in as admin, open the **Users** tab and create technical manager accounts.
 
+### Vessel-level access
+
+When creating a user, select the vessels that should be linked to that account. An
+administrator can later open **Users**, change the checked vessels under an account,
+and select **Save Vessel Access**. Administrators always see the full fleet. Technical
+managers and owner viewers see only their linked vessels across dashboards, monthly
+reports, claims, dry dock planning, owner review, submitted reports and exports.
+
+Vessel access is enforced by the server as well as the interface. Restricted users
+cannot retrieve or update another vessel's records through the API.
+
 All signed-in users can select **Change Password** in the top bar and update their own
 password after entering their current password. Administrators can also open **Users**
 and assign a temporary replacement password to any account. An administrator reset

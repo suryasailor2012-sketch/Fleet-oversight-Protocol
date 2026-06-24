@@ -1,9 +1,9 @@
-const CACHE_NAME = "fleet-technical-oversight-v20260611-passwords2";
+const CACHE_NAME = "fleet-technical-oversight-v20260624-vessel-access";
 const APP_ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=20260611-passwords2",
-  "./script.js?v=20260611-passwords2",
+  "./styles.css?v=20260624-vessel-access",
+  "./script.js?v=20260624-vessel-access",
   "./manifest.webmanifest"
 ];
 
@@ -25,6 +25,8 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
+  const requestUrl = new URL(event.request.url);
+  if (requestUrl.origin === self.location.origin && requestUrl.pathname.startsWith("/api/")) return;
 
   event.respondWith(
     fetch(event.request)
