@@ -114,6 +114,53 @@ nav {
   gap: 6px;
 }
 
+.sidebar-note select#periodSelect {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 6px;
+  padding: 8px;
+  font-size: 13px;
+}
+
+.sidebar-note select#periodSelect option {
+  color: #10243a;
+}
+
+.locked-editor input,
+.locked-editor textarea,
+.locked-editor input[type="range"] {
+  pointer-events: none;
+  opacity: 0.6;
+}
+
+.period-lock-badge {
+  justify-self: start;
+  background: rgba(240, 173, 78, 0.18);
+  color: #f0ad4e;
+  border: 1px solid rgba(240, 173, 78, 0.4);
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.sidebar-note .link-action {
+  background: transparent;
+  border: 0;
+  color: #8fd0ff;
+  text-align: left;
+  padding: 0;
+  font-size: 13px;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.sidebar-note .link-action:hover {
+  color: #fff;
+}
+
 main {
   min-width: 0;
   padding: 28px;

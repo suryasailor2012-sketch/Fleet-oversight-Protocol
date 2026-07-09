@@ -49,7 +49,10 @@
         </nav>
         <div class="sidebar-note">
           <strong>Reporting period</strong>
-          <span>May 2026</span>
+          <select id="periodSelect" aria-label="Select reporting month"></select>
+          <span id="periodLockBadge" class="period-lock-badge" hidden>Locked</span>
+          <button class="link-action admin-only" id="newPeriodButton" type="button">+ New month</button>
+          <button class="link-action admin-only" id="togglePeriodLockButton" type="button">Lock month</button>
         </div>
       </aside>
 

@@ -8,7 +8,65 @@ const port = process.env.PORT || 4173;
 const dataDir = process.env.DATA_DIR || path.join(root, "data");
 const stateFile = path.join(dataDir, "app-state.json");
 const usersFile = path.join(dataDir, "users.json");
+const periodsDir = path.join(dataDir, "periods");
+const periodsIndexFile = path.join(dataDir, "periods.json");
 const sessions = new Map();
+
+function defaultPeriodKey(date = new Date()) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function defaultPeriodLabel(date = new Date()) {
+  return new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric" }).format(date);
+}
+
+function periodReportsFile(periodKey) {
+  return path.join(periodsDir, periodKey, "reports.json");
+}
+
+function readPeriodReports(periodKey) {
+  const file = periodReportsFile(periodKey);
+  if (!fs.existsSync(file)) return null;
+  return JSON.parse(fs.readFileSync(file, "utf8"));
+}
+
+function writePeriodReports(periodKey, reportsForPeriod) {
+  const dir = path.join(periodsDir, periodKey);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(periodReportsFile(periodKey), JSON.stringify(reportsForPeriod, null, 2));
+}
+
+function readPeriods() {
+  ensureDataDir();
+  if (!fs.existsSync(periodsIndexFile)) {
+    const now = new Date();
+    const key = defaultPeriodKey(now);
+    const initial = [{ key, label: defaultPeriodLabel(now), createdAt: now.toISOString(), locked: false, lockedAt: null }];
+    // Migrate any legacy single-period reports that predate monthly folders.
+    if (fs.existsSync(stateFile)) {
+      try {
+        const legacy = JSON.parse(fs.readFileSync(stateFile, "utf8"));
+        if (Array.isArray(legacy.reports) && legacy.reports.length) {
+          writePeriodReports(key, legacy.reports);
+        }
+      } catch {
+        // ignore unreadable legacy state; a fresh period will be created empty
+      }
+    }
+    fs.writeFileSync(periodsIndexFile, JSON.stringify(initial, null, 2));
+    return initial;
+  }
+  return JSON.parse(fs.readFileSync(periodsIndexFile, "utf8"));
+}
+
+function writePeriods(periods) {
+  ensureDataDir();
+  fs.writeFileSync(periodsIndexFile, JSON.stringify(periods, null, 2));
+}
+
+function isValidPeriodKey(key) {
+  return /^\d{4}-\d{2}$/.test(String(key || ""));
+}
 
 const contentTypes = {
   ".html": "text/html; charset=utf-8",
@@ -102,15 +160,17 @@ function userCanAccessVessel(user, vesselName) {
   return user?.role === "admin" || normalizedAssignedVessels(user).includes(String(vesselName || ""));
 }
 
+function filterItemsForUser(items, user) {
+  return Array.isArray(items) ? items.filter((item) => userCanAccessVessel(user, item.vessel)) : [];
+}
+
 function filterStateForUser(state, user) {
   if (!state) return {};
   if (user.role === "admin") return state;
-  const filterItems = (items) => (Array.isArray(items) ? items.filter((item) => userCanAccessVessel(user, item.vessel)) : []);
   return {
-    reports: filterItems(state.reports),
-    claims: filterItems(state.claims),
-    drydockPlans: filterItems(state.drydockPlans),
-    submittedReports: filterItems(state.submittedReports),
+    claims: filterItemsForUser(state.claims, user),
+    drydockPlans: filterItemsForUser(state.drydockPlans, user),
+    submittedReports: filterItemsForUser(state.submittedReports, user),
     savedAt: state.savedAt
   };
 }
@@ -130,11 +190,15 @@ function mergeStateForUser(existingState, incomingState, user) {
   const existing = existingState || {};
   return {
     ...existing,
-    reports: mergeRestrictedItems(existing.reports, incomingState.reports, user),
     claims: mergeRestrictedItems(existing.claims, incomingState.claims, user),
     drydockPlans: mergeRestrictedItems(existing.drydockPlans, incomingState.drydockPlans, user),
     submittedReports: mergeRestrictedItems(existing.submittedReports, incomingState.submittedReports, user)
   };
+}
+
+function mergeReportsForUser(existingReports, incomingReports, user) {
+  if (user.role === "admin") return Array.isArray(incomingReports) ? incomingReports : [];
+  return mergeRestrictedItems(existingReports, incomingReports, user);
 }
 
 function sendJson(response, status, payload) {
@@ -379,17 +443,104 @@ async function handleApi(request, response) {
     }
   }
 
-  if (request.url.startsWith("/api/state") && request.method === "GET") {
+  if (urlPath === "/api/periods" && request.method === "GET") {
     const signedInUser = requireUser(request, response);
     if (!signedInUser) return true;
-    sendJson(response, 200, filterStateForUser(readState(), signedInUser));
+    const periods = readPeriods().slice().sort((a, b) => a.key.localeCompare(b.key));
+    sendJson(response, 200, { periods });
     return true;
   }
 
-  if (request.url.startsWith("/api/state") && request.method === "PUT") {
+  if (urlPath === "/api/periods" && request.method === "POST") {
+    if (!requireAdmin(request, response)) return true;
+    try {
+      const body = JSON.parse(await readRequestBody(request) || "{}");
+      const key = String(body.key || "").trim();
+      const label = String(body.label || "").trim();
+      const carryForward = Boolean(body.carryForward);
+      if (!isValidPeriodKey(key) || !label) {
+        sendJson(response, 400, { error: "A period key in YYYY-MM format and a label are required" });
+        return true;
+      }
+      const periods = readPeriods();
+      if (periods.some((period) => period.key === key)) {
+        sendJson(response, 409, { error: "That reporting month already exists" });
+        return true;
+      }
+      if (carryForward) {
+        const latest = periods.slice().sort((a, b) => a.key.localeCompare(b.key)).at(-1);
+        const sourceReports = latest ? readPeriodReports(latest.key) : null;
+        if (Array.isArray(sourceReports)) {
+          const carried = sourceReports.map((report) => ({ ...report, period: label, status: "Draft" }));
+          writePeriodReports(key, carried);
+        }
+      }
+      const created = { key, label, createdAt: new Date().toISOString(), locked: false, lockedAt: null };
+      periods.push(created);
+      writePeriods(periods);
+      sendJson(response, 201, { period: created });
+      return true;
+    } catch (error) {
+      sendJson(response, 400, { error: error.message });
+      return true;
+    }
+  }
+
+  const lockMatch = urlPath.match(/^\/api\/periods\/([^/]+)\/lock$/);
+  if (lockMatch && request.method === "POST") {
+    if (!requireAdmin(request, response)) return true;
+    try {
+      const body = JSON.parse(await readRequestBody(request) || "{}");
+      const key = decodeURIComponent(lockMatch[1]);
+      const periods = readPeriods();
+      const period = periods.find((item) => item.key === key);
+      if (!period) {
+        sendJson(response, 404, { error: "Reporting month not found" });
+        return true;
+      }
+      period.locked = Boolean(body.locked);
+      period.lockedAt = period.locked ? new Date().toISOString() : null;
+      writePeriods(periods);
+      sendJson(response, 200, { period });
+      return true;
+    } catch (error) {
+      sendJson(response, 400, { error: error.message });
+      return true;
+    }
+  }
+
+  if (urlPath === "/api/state" && request.method === "GET") {
+    const signedInUser = requireUser(request, response);
+    if (!signedInUser) return true;
+    const query = new URLSearchParams(request.url.split("?")[1] || "");
+    const periods = readPeriods();
+    const defaultPeriod = periods.slice().sort((a, b) => a.key.localeCompare(b.key)).at(-1);
+    const periodKey = query.get("period") || defaultPeriod?.key || defaultPeriodKey();
+    const period = periods.find((item) => item.key === periodKey) || null;
+    const reportsForPeriod = readPeriodReports(periodKey) || [];
+    const filtered = filterStateForUser(readState(), signedInUser);
+    sendJson(response, 200, {
+      ...filtered,
+      reports: filterItemsForUser(reportsForPeriod, signedInUser),
+      period: periodKey,
+      locked: Boolean(period?.locked)
+    });
+    return true;
+  }
+
+  if (urlPath === "/api/state" && request.method === "PUT") {
     const signedInUser = requireUser(request, response);
     if (!signedInUser) return true;
     try {
+      const query = new URLSearchParams(request.url.split("?")[1] || "");
+      const periods = readPeriods();
+      const defaultPeriod = periods.slice().sort((a, b) => a.key.localeCompare(b.key)).at(-1);
+      const periodKey = query.get("period") || defaultPeriod?.key || defaultPeriodKey();
+      const period = periods.find((item) => item.key === periodKey);
+      if (period?.locked && signedInUser.role !== "admin") {
+        sendJson(response, 423, { error: "This reporting month is locked and can no longer be edited" });
+        return true;
+      }
       const body = await readRequestBody(request);
       const state = JSON.parse(body || "{}");
       if (!Array.isArray(state.reports) || !Array.isArray(state.claims) || !Array.isArray(state.drydockPlans)) {
@@ -399,8 +550,15 @@ async function handleApi(request, response) {
       if (!Array.isArray(state.submittedReports)) {
         state.submittedReports = [];
       }
+      const mergedReports = mergeReportsForUser(readPeriodReports(periodKey), state.reports, signedInUser);
+      writePeriodReports(periodKey, mergedReports);
       const saved = writeState(mergeStateForUser(readState(), state, signedInUser));
-      sendJson(response, 200, filterStateForUser(saved, signedInUser));
+      sendJson(response, 200, {
+        ...filterStateForUser(saved, signedInUser),
+        reports: filterItemsForUser(mergedReports, signedInUser),
+        period: periodKey,
+        locked: Boolean(period?.locked)
+      });
       return true;
     } catch (error) {
       const status = error.message.includes("not assigned") ? 403 : 400;

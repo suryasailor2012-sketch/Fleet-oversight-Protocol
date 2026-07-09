@@ -6,7 +6,7 @@ This is the Railway-ready package for the Fleet Technical Oversight prototype.
 
 - Fleet dashboard
 - Vessel register
-- Monthly technical reports with parameter-level values and comments
+- Monthly technical reports with parameter-level values and comments, organized in per-month reporting folders that users can switch between
 - Claims tracker
 - Dry dock planner
 - AI review dashboard
@@ -83,6 +83,22 @@ DATA_DIR=/data
 ```
 
 Without a volume, data may be lost when the service is rebuilt or redeployed.
+
+## Monthly Reporting Folders
+
+Every reporting month gets its own folder on disk under
+`DATA_DIR/periods/<YYYY-MM>/reports.json`. Claims, dry dock plans, users and the
+submitted-report archive stay fleet-wide (not per month), since those aren't reset
+every month.
+
+- The **Reporting period** selector in the sidebar lets any signed-in user switch
+  between existing months. Switching reloads that month's vessel reports.
+- Only admins can create a new month (**+ New month**) or lock/unlock a month.
+  Creating a month asks whether to carry forward last month's scores as a starting
+  draft, or start blank.
+- Locking a month (**Lock month**) makes it read-only for everyone except admins -
+  useful once a month has been fully submitted and you don't want further edits.
+  Download PDF still works on a locked month.
 
 ## Local Test
 
