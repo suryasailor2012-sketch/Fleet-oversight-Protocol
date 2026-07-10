@@ -22,6 +22,7 @@ const APP_STATE_KEY = "fleetTechnicalOversightState.v1";
 let remoteSaveTimer = null;
 let remoteStateAvailable = false;
 let currentUser = null;
+let currentReportingMonth = "2026-05";
 
 const reportTemplate = {
   "Hull": [
@@ -122,7 +123,23 @@ let vessels = [...fleetVessels];
 
 const seedScores = [8.4, 7.8, 8.1, 6.9, 7.2, 8.6, 7.5, 8.0, 8.7, 7.1, 8.3, 6.8, 8.5, 7.9];
 
-const reports = vessels.map((vessel, index) => {
+function monthValueToLabel(value) {
+  const [year, month] = String(value || "2026-05").split("-").map(Number);
+  const date = new Date(year || 2026, (month || 5) - 1, 1);
+  return new Intl.DateTimeFormat("en-GB", { month: "long", year: "numeric" }).format(date);
+}
+
+function periodLabelToMonthValue(label) {
+  const date = new Date(`1 ${label}`);
+  if (Number.isNaN(date.getTime())) return "2026-05";
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function activePeriodLabel() {
+  return monthValueToLabel(currentReportingMonth);
+}
+
+function createReportForVessel(vessel, index, period = activePeriodLabel()) {
   const scores = {};
   const parameters = {};
   categories.forEach((category, categoryIndex) => {
@@ -146,7 +163,7 @@ const reports = vessels.map((vessel, index) => {
 
   return {
     vessel: vessel.vessel,
-    period: "May 2026",
+    period,
     status: index % 4 === 0 ? "Submitted" : index % 3 === 0 ? "Draft" : "Owner Review",
     scores,
     parameters,
@@ -154,7 +171,9 @@ const reports = vessels.map((vessel, index) => {
     openIssues: issueCount(scores),
     targetDate: index % 3 === 0 ? "2026-06-30" : "2026-07-15",
   };
-});
+}
+
+const reports = vessels.map((vessel, index) => createReportForVessel(vessel, index, activePeriodLabel()));
 
 let claims = [
   { vessel: "KINGIS", type: "Charterers Recoverable", amount: 12500, target: "2026-06-12", description: "Bunker differential and port delay documents under review." },
@@ -198,6 +217,9 @@ function loadAppState() {
     if (Array.isArray(saved.submittedReports)) {
       submittedReports = saved.submittedReports;
     }
+    if (saved.currentReportingMonth) {
+      currentReportingMonth = saved.currentReportingMonth;
+    }
   } catch (error) {
     console.warn("Unable to load saved offline data", error);
   }
@@ -209,6 +231,7 @@ function saveAppState() {
     claims,
     drydockPlans,
     submittedReports,
+    currentReportingMonth,
     savedAt: new Date().toISOString(),
   };
   localStorage.setItem(APP_STATE_KEY, JSON.stringify(state));
@@ -230,6 +253,7 @@ async function loadRemoteState() {
     claims = saved.claims;
     drydockPlans = saved.drydockPlans;
     submittedReports = Array.isArray(saved.submittedReports) ? saved.submittedReports : [];
+    currentReportingMonth = saved.currentReportingMonth || currentReportingMonth;
     localStorage.setItem(APP_STATE_KEY, JSON.stringify(saved));
     remoteStateAvailable = true;
     return true;
@@ -256,7 +280,7 @@ function updateSyncStatus() {
   status.className = `sync-status ${remoteStateAvailable ? "online" : "local"}`;
 }
 
-async function saveRemoteState(state = { reports, claims, drydockPlans, submittedReports }) {
+async function saveRemoteState(state = { reports, claims, drydockPlans, submittedReports, currentReportingMonth }) {
   try {
     if (!currentUser) {
       remoteStateAvailable = false;
@@ -424,7 +448,33 @@ function average(values) {
 }
 
 function reportAverage(report) {
+  if (!report?.scores) return 0;
   return Number(average(Object.values(report.scores)).toFixed(1));
+}
+
+function activeReports() {
+  const period = activePeriodLabel();
+  const allowed = new Set(vessels.map((vessel) => vessel.vessel));
+  return reports.filter((report) => report.period === period && allowed.has(report.vessel));
+}
+
+function ensureReportForVessel(vesselName) {
+  const period = activePeriodLabel();
+  let report = reports.find((item) => item.vessel === vesselName && item.period === period);
+  if (report) return report;
+  const vessel = fleetVessels.find((item) => item.vessel === vesselName);
+  if (!vessel) return null;
+  report = createReportForVessel(vessel, fleetVessels.findIndex((item) => item.vessel === vesselName), period);
+  report.status = "Draft";
+  reports.push(report);
+  return report;
+}
+
+function updateReportingPeriodDisplay() {
+  const input = document.querySelector("#reportingPeriod");
+  const label = document.querySelector("#reportingPeriodLabel");
+  if (input) input.value = currentReportingMonth;
+  if (label) label.textContent = activePeriodLabel();
 }
 
 function statusForScore(score) {
@@ -676,7 +726,7 @@ function createPdfFromLines(lines) {
 }
 
 function downloadMonthlyReportPdf(vesselName) {
-  const report = reports.find((item) => item.vessel === vesselName);
+  const report = ensureReportForVessel(vesselName);
   if (!report) {
     showToast("No monthly report found for this vessel.");
     return;
@@ -838,7 +888,7 @@ function drydockStatus(schedule) {
 }
 
 function predictVesselRisk(vessel) {
-  const report = reports.find((item) => item.vessel === vessel.vessel);
+  const report = ensureReportForVessel(vessel.vessel);
   const plan = drydockPlans.find((item) => item.vessel === vessel.vessel);
   const schedule = calculateDrydockSchedule(plan);
   const vesselClaims = claims.filter((claim) => claim.vessel === vessel.vessel);
@@ -912,17 +962,19 @@ function renderDashboard() {
   }
   const visible = filteredVessels();
   const visibleNames = new Set(visible.map((vessel) => vessel.vessel));
-  const visibleReports = reports.filter((report) => visibleNames.has(report.vessel));
+  visible.forEach((vessel) => ensureReportForVessel(vessel.vessel));
+  const periodReports = activeReports();
+  const visibleReports = periodReports.filter((report) => visibleNames.has(report.vessel));
   const fleetAverage = visibleReports.length ? average(visibleReports.map(reportAverage)) : 0;
   const exposure = claims.reduce((sum, claim) => sum + Number(claim.amount), 0);
 
   document.querySelector("#fleetCount").textContent = vessels.length;
   document.querySelector("#avgScore").textContent = fleetAverage.toFixed(1);
-  document.querySelector("#criticalCount").textContent = reports.reduce((sum, report) => sum + report.openIssues, 0);
+  document.querySelector("#criticalCount").textContent = periodReports.reduce((sum, report) => sum + report.openIssues, 0);
   document.querySelector("#claimsExposure").textContent = money(exposure);
 
   const rows = visible.map((vessel) => {
-    const report = reports.find((item) => item.vessel === vessel.vessel);
+    const report = ensureReportForVessel(vessel.vessel);
     const score = reportAverage(report);
     const status = statusForScore(score);
     return `
@@ -960,7 +1012,7 @@ function renderCategoryBars(visibleReports) {
 }
 
 function renderPriorityItems() {
-  const items = reports
+  const items = activeReports()
     .flatMap((report) =>
       Object.entries(report.scores)
         .filter(([, score]) => score < 7)
@@ -1020,7 +1072,7 @@ function renderReportEditor() {
   });
   const selected = document.querySelector("#reportVessel").value || vessels[0].vessel;
   const vessel = vessels.find((item) => item.vessel === selected);
-  const report = reports.find((item) => item.vessel === selected);
+  const report = ensureReportForVessel(selected);
 
   document.querySelector("#reportMeta").innerHTML = [
     ["Owner", vessel.owner],
@@ -1133,14 +1185,14 @@ function renderClaims() {
 }
 
 function renderReviewQueue() {
-  const queue = reports.filter((report) => report.status === "Owner Review" || report.openIssues > 0);
+  const queue = activeReports().filter((report) => report.status === "Owner Review" || report.openIssues > 0);
   document.querySelector("#reviewQueue").innerHTML = queue
     .map((report) => {
       const score = reportAverage(report);
       const status = statusForScore(score);
       return `
         <article class="review-card">
-          <strong>${report.vessel} <span class="score-pill ${status.className}">${score}</span></strong>
+          <strong>${report.vessel} - ${report.period} <span class="score-pill ${status.className}">${score}</span></strong>
           <p>${report.status}. ${report.openIssues} open technical items. ${report.remarks}</p>
           <button class="secondary-action pdf-report-button" data-report-pdf="${report.vessel}">Download PDF</button>
         </article>
@@ -1615,13 +1667,24 @@ function bindEvents() {
   document.querySelector("#globalSearch").addEventListener("input", renderDashboard);
   document.querySelector("#ownerFilter").addEventListener("change", renderDashboard);
   document.querySelector("#reportVessel").addEventListener("change", renderReportEditor);
+  document.querySelector("#reportingPeriod").addEventListener("change", (event) => {
+    currentReportingMonth = event.target.value || currentReportingMonth;
+    vessels.forEach((vessel) => ensureReportForVessel(vessel.vessel));
+    updateReportingPeriodDisplay();
+    saveAppState();
+    renderDashboard();
+    renderReportEditor();
+    renderAiReview();
+    renderReviewQueue();
+    showToast(`Reporting period changed to ${activePeriodLabel()}.`);
+  });
   document.querySelector("#ddVessel").addEventListener("change", renderDrydockEditor);
   document.querySelector("#aiVesselFilter").addEventListener("change", renderAiReview);
   document.querySelector("#archiveVesselFilter").addEventListener("change", renderSubmittedArchive);
 
   document.querySelector("#scoreInputs").addEventListener("input", (event) => {
     const selected = document.querySelector("#reportVessel").value;
-    const report = reports.find((item) => item.vessel === selected);
+    const report = ensureReportForVessel(selected);
 
     const scoreCategory = event.target.dataset.paramScore;
     if (scoreCategory) {
@@ -1663,7 +1726,7 @@ function bindEvents() {
 
   document.querySelector("#reportRemarks").addEventListener("input", (event) => {
     const selected = document.querySelector("#reportVessel").value;
-    const report = reports.find((item) => item.vessel === selected);
+    const report = ensureReportForVessel(selected);
     report.remarks = event.target.value;
     saveAppState();
     renderChecklist(report);
@@ -1680,7 +1743,7 @@ function bindEvents() {
   });
   document.querySelector("#submitReport").addEventListener("click", () => {
     const selected = document.querySelector("#reportVessel").value;
-    const report = reports.find((item) => item.vessel === selected);
+    const report = ensureReportForVessel(selected);
     report.status = "Owner Review";
     archiveSubmittedReport(report);
     saveAppState();
@@ -1780,17 +1843,18 @@ function bindEvents() {
   });
 
   document.querySelector("#exportSummary").addEventListener("click", () => {
-    const header = ["Vessel", "Owner", "Average Score", "Open Issues", "Status", "Remarks"];
-    const rows = reports.map((report) => {
+    vessels.forEach((vessel) => ensureReportForVessel(vessel.vessel));
+    const header = ["Period", "Vessel", "Owner", "Average Score", "Open Issues", "Status", "Remarks"];
+    const rows = activeReports().map((report) => {
       const vessel = vessels.find((item) => item.vessel === report.vessel);
       const score = reportAverage(report);
-      return [report.vessel, vessel.owner, score, report.openIssues, statusForScore(score).label, report.remarks];
+      return [report.period, report.vessel, vessel.owner, score, report.openIssues, statusForScore(score).label, report.remarks];
     });
-    downloadCsv("owner-fleet-summary.csv", [header, ...rows]);
+    downloadCsv(`owner-fleet-summary-${currentReportingMonth}.csv`, [header, ...rows]);
   });
 
   document.querySelector("#approveAll").addEventListener("click", () => {
-    reports.filter((report) => report.openIssues === 0).forEach((report) => {
+    activeReports().filter((report) => report.openIssues === 0).forEach((report) => {
       report.status = "Approved";
     });
     saveAppState();
@@ -1809,6 +1873,7 @@ async function init() {
   if (currentUser) {
     await loadRemoteState();
   }
+  updateReportingPeriodDisplay();
   resetDashboardFilters();
   renderDashboard();
   renderVesselRegister();

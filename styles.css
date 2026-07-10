@@ -114,6 +114,19 @@ nav {
   gap: 6px;
 }
 
+.sidebar-note label {
+  font-weight: 800;
+}
+
+.sidebar-note input {
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  background: #0b1c2d;
+  color: #fff;
+  padding: 8px;
+}
+
 main {
   min-width: 0;
   padding: 28px;

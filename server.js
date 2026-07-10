@@ -160,6 +160,7 @@ function filterStateForUser(state, user) {
     claims: filterItems(state.claims),
     drydockPlans: filterItems(state.drydockPlans),
     submittedReports: filterItems(state.submittedReports),
+    currentReportingMonth: state.currentReportingMonth,
     savedAt: state.savedAt
   };
 }

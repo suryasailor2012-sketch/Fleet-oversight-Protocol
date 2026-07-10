@@ -6,7 +6,7 @@
     <title>Fleet Technical Oversight</title>
     <meta name="theme-color" content="#10243a" />
     <link rel="manifest" href="manifest.webmanifest" />
-    <link rel="stylesheet" href="styles.css?v=20260710-admin-user-gate" />
+    <link rel="stylesheet" href="styles.css?v=20260710-reporting-month" />
   </head>
   <body>
     <div class="app-shell">
@@ -48,8 +48,9 @@
           </button>
         </nav>
         <div class="sidebar-note">
-          <strong>Reporting period</strong>
-          <span>May 2026</span>
+          <label for="reportingPeriod">Reporting period</label>
+          <input id="reportingPeriod" type="month" value="2026-05" />
+          <span id="reportingPeriodLabel">May 2026</span>
         </div>
       </aside>
 
@@ -605,6 +606,6 @@
     </section>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="script.js?v=20260710-admin-user-gate"></script>
+    <script src="script.js?v=20260710-reporting-month"></script>
   </body>
 </html>

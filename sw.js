@@ -1,9 +1,9 @@
-const CACHE_NAME = "fleet-technical-oversight-v20260710-admin-user-gate";
+const CACHE_NAME = "fleet-technical-oversight-v20260710-reporting-month";
 const APP_ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=20260710-admin-user-gate",
-  "./script.js?v=20260710-admin-user-gate",
+  "./styles.css?v=20260710-reporting-month",
+  "./script.js?v=20260710-reporting-month",
   "./manifest.webmanifest"
 ];
 
