@@ -6,7 +6,7 @@
     <title>Fleet Technical Oversight</title>
     <meta name="theme-color" content="#10243a" />
     <link rel="manifest" href="manifest.webmanifest" />
-    <link rel="stylesheet" href="styles.css?v=20260710-dashboard-trends" />
+    <link rel="stylesheet" href="styles.css?v=20260710-search-autofill-fix" />
   </head>
   <body>
     <div class="app-shell">
@@ -65,7 +65,7 @@
             <span class="user-chip" id="currentUserChip">Not signed in</span>
             <label class="search-box">
               <span>Search</span>
-              <input id="globalSearch" name="fleet-vessel-search" type="search" placeholder="Vessel, IMO, owner, superintendent" autocomplete="off" autocapitalize="none" spellcheck="false" />
+              <input id="globalSearch" name="fto_lookup_7421" type="text" inputmode="search" placeholder="Vessel, IMO, owner, superintendent" autocomplete="new-password" autocorrect="off" autocapitalize="none" spellcheck="false" data-lpignore="true" data-form-type="other" />
             </label>
             <button class="primary-action" id="exportSummary">Export Summary</button>
             <button class="secondary-action" id="changePasswordButton">Change Password</button>
@@ -651,6 +651,6 @@
     </section>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="script.js?v=20260710-dashboard-trends"></script>
+    <script src="script.js?v=20260710-search-autofill-fix"></script>
   </body>
 </html>

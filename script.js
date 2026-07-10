@@ -369,6 +369,21 @@ function resetDashboardFilters() {
   if (ownerFilter) ownerFilter.value = "all";
 }
 
+function clearAutofilledSearch() {
+  const search = document.querySelector("#globalSearch");
+  if (!search) return false;
+  const value = search.value.trim();
+  const lower = value.toLowerCase();
+  const looksLikeEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+  const matchesUser = currentUser?.email && lower === currentUser.email.toLowerCase();
+  const looksLikePasswordFill = value.length >= 8 && !fleetVessels.some((vessel) => Object.values(vessel).join(" ").toLowerCase().includes(lower));
+  if (looksLikeEmail || matchesUser || looksLikePasswordFill) {
+    search.value = "";
+    return true;
+  }
+  return false;
+}
+
 function applyVesselAccess() {
   const hasFleetAccess = currentUser?.role === "admin";
   const assigned = new Set(currentUser?.assignedVessels || []);
@@ -1101,6 +1116,7 @@ function predictVesselRisk(vessel) {
 }
 
 function filteredVessels() {
+  clearAutofilledSearch();
   const query = document.querySelector("#globalSearch").value.trim().toLowerCase();
   const owner = document.querySelector("#ownerFilter").value;
   return vessels.filter((vessel) => {
@@ -1111,10 +1127,7 @@ function filteredVessels() {
 }
 
 function renderDashboard() {
-  const search = document.querySelector("#globalSearch");
-  if (currentUser?.email && search.value.trim().toLowerCase() === currentUser.email.toLowerCase()) {
-    search.value = "";
-  }
+  clearAutofilledSearch();
   const visible = filteredVessels();
   const visibleNames = new Set(visible.map((vessel) => vessel.vessel));
   visible.forEach((vessel) => ensureReportForVessel(vessel.vessel));
@@ -1901,6 +1914,10 @@ function bindEvents() {
       applyAuthState();
       await loadRemoteState();
       resetDashboardFilters();
+      window.setTimeout(() => {
+        clearAutofilledSearch();
+        renderDashboard();
+      }, 250);
       renderDashboard();
       renderReportEditor();
       renderClaims();
@@ -2261,6 +2278,10 @@ async function init() {
   }
   updateReportingPeriodDisplay();
   resetDashboardFilters();
+  window.setTimeout(() => {
+    clearAutofilledSearch();
+    renderDashboard();
+  }, 250);
   renderDashboard();
   renderVesselRegister();
   renderReportEditor();
