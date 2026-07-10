@@ -8,6 +8,7 @@ const port = process.env.PORT || 4173;
 const dataDir = process.env.DATA_DIR || path.join(root, "data");
 const stateFile = path.join(dataDir, "app-state.json");
 const usersFile = path.join(dataDir, "users.json");
+const usersBackupFile = path.join(dataDir, "users.backup.json");
 const sessions = new Map();
 
 const contentTypes = {
@@ -60,6 +61,10 @@ function verifyPassword(password, stored) {
 
 function readUsers() {
   ensureDataDir();
+  if (!fs.existsSync(usersFile) && fs.existsSync(usersBackupFile)) {
+    fs.copyFileSync(usersBackupFile, usersFile);
+    console.warn("users.json was missing; restored users from users.backup.json");
+  }
   if (!fs.existsSync(usersFile)) {
     const adminEmail = process.env.ADMIN_EMAIL || "admin@fleet.local";
     const adminPassword = process.env.ADMIN_PASSWORD || "ChangeMe123!";
@@ -74,14 +79,45 @@ function readUsers() {
         createdAt: new Date().toISOString()
       }
     ];
-    fs.writeFileSync(usersFile, JSON.stringify(initialUsers, null, 2));
+    writeUsers(initialUsers, { allowBootstrap: true });
   }
-  return JSON.parse(fs.readFileSync(usersFile, "utf8"));
+  try {
+    const users = JSON.parse(fs.readFileSync(usersFile, "utf8"));
+    if (!Array.isArray(users)) throw new Error("users.json is not an array");
+    return users;
+  } catch (error) {
+    if (!fs.existsSync(usersBackupFile)) throw error;
+    const backupUsers = JSON.parse(fs.readFileSync(usersBackupFile, "utf8"));
+    if (!Array.isArray(backupUsers)) throw error;
+    fs.copyFileSync(usersBackupFile, usersFile);
+    console.warn(`users.json was invalid; restored users from backup. Cause: ${error.message}`);
+    return backupUsers;
+  }
 }
 
-function writeUsers(users) {
+function writeJsonAtomic(filePath, value) {
   ensureDataDir();
-  fs.writeFileSync(usersFile, JSON.stringify(users, null, 2));
+  const tempFile = `${filePath}.${process.pid}.tmp`;
+  fs.writeFileSync(tempFile, JSON.stringify(value, null, 2));
+  fs.renameSync(tempFile, filePath);
+}
+
+function writeUsers(users, options = {}) {
+  ensureDataDir();
+  if (!Array.isArray(users) || !users.length) {
+    throw new Error("Refusing to write an empty user list");
+  }
+  let existingUsers = [];
+  try {
+    existingUsers = fs.existsSync(usersFile) ? JSON.parse(fs.readFileSync(usersFile, "utf8")) : [];
+  } catch {
+    existingUsers = [];
+  }
+  if (!options.allowBootstrap && Array.isArray(existingUsers) && existingUsers.length > users.length) {
+    console.warn(`User list size changed from ${existingUsers.length} to ${users.length}. Keeping backup before write.`);
+  }
+  writeJsonAtomic(usersFile, users);
+  writeJsonAtomic(usersBackupFile, users);
 }
 
 function resetFlagEnabled(value) {
@@ -505,4 +541,8 @@ const server = http.createServer(async (request, response) => {
 server.listen(port, () => {
   console.log(`Fleet Technical Oversight listening on port ${port}`);
   console.log(`State file: ${stateFile}`);
+  console.log(`Users file: ${usersFile}`);
+  if (process.env.RAILWAY_ENVIRONMENT && !process.env.DATA_DIR) {
+    console.warn("Railway detected without DATA_DIR. Attach a Railway Volume and set DATA_DIR=/data to keep users after restarts.");
+  }
 });

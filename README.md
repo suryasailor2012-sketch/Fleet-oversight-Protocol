@@ -86,15 +86,19 @@ password after entering their current password. Administrators can also open **U
 and assign a temporary replacement password to any account. An administrator reset
 signs that user out of all active sessions. Passwords must contain at least 8 characters.
 
-## Recommended Railway Volume
+## Required Railway Volume for Live Use
 
-To keep the JSON data after redeploys, attach a Railway volume and set:
+To keep users, passwords, vessel access and submitted reports after Railway restarts,
+attach a Railway volume and set:
 
 ```text
 DATA_DIR=/data
 ```
 
-Without a volume, data may be lost when the service is rebuilt or redeployed.
+Without a volume, Railway can recreate the app filesystem when the service restarts,
+which may make it appear that users were deleted after logout. The app writes
+`users.json` and `users.backup.json` in `DATA_DIR` and automatically restores the
+user list from the backup if the primary user file is missing or invalid.
 
 ## Local Test
 
