@@ -320,6 +320,11 @@ textarea {
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.panel-heading > div:first-child {
+  min-width: 0;
 }
 
 .panel h3 {
@@ -564,6 +569,25 @@ textarea {
 
 .pdf-report-button {
   margin-top: 10px;
+}
+
+.user-backup-actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  width: min(100%, 260px);
+  flex: 0 1 260px;
+}
+
+.user-backup-actions .secondary-action {
+  width: 100%;
+  min-height: 42px;
+  white-space: normal;
+  line-height: 1.2;
+}
+
+.visually-hidden-file {
+  display: none;
 }
 
 .meta-grid {

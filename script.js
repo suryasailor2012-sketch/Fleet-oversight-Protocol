@@ -1891,6 +1891,28 @@ function downloadCsv(filename, rows) {
   URL.revokeObjectURL(url);
 }
 
+function downloadJson(filename, payload) {
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+async function exportUsersBackup() {
+  if (!userIsAdmin()) {
+    showToast("Only the administrator can export users.");
+    return;
+  }
+  const backup = await apiRequest("/api/users/export");
+  downloadJson(`fleet-users-backup-${new Date().toISOString().slice(0, 10)}.json`, backup);
+  showToast("Users backup downloaded. Keep it secure.");
+}
+
 function showToast(message) {
   const toast = document.querySelector("#toast");
   toast.textContent = message;
@@ -2039,6 +2061,43 @@ function bindEvents() {
       event.target.reset();
       await renderUsers();
       showToast("User created.");
+    } catch (error) {
+      showToast(error.message);
+    }
+  });
+
+  document.querySelector("#exportUsersBackup").addEventListener("click", async () => {
+    try {
+      await exportUsersBackup();
+    } catch (error) {
+      showToast(error.message);
+    }
+  });
+
+  document.querySelector("#importUsersBackupButton").addEventListener("click", () => {
+    if (!userIsAdmin()) {
+      showToast("Only the administrator can import users.");
+      return;
+    }
+    document.querySelector("#importUsersBackup").click();
+  });
+
+  document.querySelector("#importUsersBackup").addEventListener("change", async (event) => {
+    if (!userIsAdmin()) {
+      showToast("Only the administrator can import users.");
+      return;
+    }
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      const backup = JSON.parse(await file.text());
+      await apiRequest("/api/users/import", {
+        method: "POST",
+        body: JSON.stringify(backup),
+      });
+      event.target.value = "";
+      await renderUsers();
+      showToast("Users restored from backup. Please sign in again if asked.");
     } catch (error) {
       showToast(error.message);
     }

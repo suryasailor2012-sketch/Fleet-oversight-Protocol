@@ -100,6 +100,11 @@ which may make it appear that users were deleted after logout. The app writes
 `users.json` and `users.backup.json` in `DATA_DIR` and automatically restores the
 user list from the backup if the primary user file is missing or invalid.
 
+Admins can also open **Users** and select **Export Users Backup** after creating or
+updating user accounts. Store that JSON file securely. If Railway storage is ever
+reset, sign in as the bootstrap admin, open **Users**, and select **Import Users
+Backup** to restore the accounts and vessel access.
+
 ## Local Test
 
 ```powershell

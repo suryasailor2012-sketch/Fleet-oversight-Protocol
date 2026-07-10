@@ -47,6 +47,20 @@ function publicUser(user) {
   };
 }
 
+function backupUser(user) {
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    assignedVessels: user.assignedVessels || [],
+    passwordHash: user.passwordHash,
+    createdAt: user.createdAt,
+    passwordUpdatedAt: user.passwordUpdatedAt,
+    accessUpdatedAt: user.accessUpdatedAt
+  };
+}
+
 function hashPassword(password, salt = crypto.randomBytes(16).toString("hex")) {
   const hash = crypto.pbkdf2Sync(password, salt, 120000, 64, "sha512").toString("hex");
   return `${salt}:${hash}`;
@@ -415,6 +429,59 @@ async function handleApi(request, response) {
       user.accessUpdatedAt = new Date().toISOString();
       writeUsers(users);
       sendJson(response, 200, { ok: true, user: publicUser(user) });
+      return true;
+    } catch (error) {
+      sendJson(response, 400, { error: error.message });
+      return true;
+    }
+  }
+
+  if (urlPath === "/api/users/export" && request.method === "GET") {
+    if (!requireAdmin(request, response)) return true;
+    sendJson(response, 200, {
+      exportedAt: new Date().toISOString(),
+      warning: "Sensitive backup. Store securely. Contains password hashes for account recovery.",
+      users: readUsers().map(backupUser)
+    });
+    return true;
+  }
+
+  if (urlPath === "/api/users/import" && request.method === "POST") {
+    if (!requireAdmin(request, response)) return true;
+    try {
+      const body = JSON.parse(await readRequestBody(request) || "{}");
+      const incomingUsers = Array.isArray(body.users) ? body.users : [];
+      if (!incomingUsers.length) {
+        sendJson(response, 400, { error: "Backup does not contain users" });
+        return true;
+      }
+      const cleaned = incomingUsers.map((user) => ({
+        id: String(user.id || crypto.randomUUID()),
+        name: String(user.name || "").trim(),
+        email: String(user.email || "").trim().toLowerCase(),
+        role: ["admin", "technical_manager", "owner_viewer"].includes(user.role) ? user.role : "technical_manager",
+        assignedVessels: Array.isArray(user.assignedVessels) ? user.assignedVessels.map((name) => String(name).trim()).filter(Boolean) : [],
+        passwordHash: String(user.passwordHash || ""),
+        createdAt: user.createdAt || new Date().toISOString(),
+        passwordUpdatedAt: user.passwordUpdatedAt,
+        accessUpdatedAt: user.accessUpdatedAt
+      }));
+      if (cleaned.some((user) => !user.name || !user.email || !user.passwordHash.includes(":"))) {
+        sendJson(response, 400, { error: "Backup contains invalid user records" });
+        return true;
+      }
+      if (!cleaned.some((user) => user.role === "admin")) {
+        sendJson(response, 400, { error: "Backup must contain at least one admin user" });
+        return true;
+      }
+      const uniqueEmails = new Set(cleaned.map((user) => user.email));
+      if (uniqueEmails.size !== cleaned.length) {
+        sendJson(response, 400, { error: "Backup contains duplicate email addresses" });
+        return true;
+      }
+      writeUsers(cleaned);
+      sessions.clear();
+      sendJson(response, 200, { ok: true, users: cleaned.map(publicUser) });
       return true;
     } catch (error) {
       sendJson(response, 400, { error: error.message });

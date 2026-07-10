@@ -1,9 +1,9 @@
-const CACHE_NAME = "fleet-technical-oversight-v20260710-search-autofill-fix";
+const CACHE_NAME = "fleet-technical-oversight-v20260710-users-layout-fix";
 const APP_ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=20260710-search-autofill-fix",
-  "./script.js?v=20260710-search-autofill-fix",
+  "./styles.css?v=20260710-users-layout-fix",
+  "./script.js?v=20260710-users-layout-fix",
   "./manifest.webmanifest"
 ];
 
