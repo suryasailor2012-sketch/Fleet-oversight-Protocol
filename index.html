@@ -6,7 +6,7 @@
     <title>Fleet Technical Oversight</title>
     <meta name="theme-color" content="#10243a" />
     <link rel="manifest" href="manifest.webmanifest" />
-    <link rel="stylesheet" href="styles.css?v=20260710-search-autofill-fix" />
+    <link rel="stylesheet" href="styles.css?v=20260710-user-backup" />
   </head>
   <body>
     <div class="app-shell">
@@ -595,6 +595,13 @@
                   <h3>Active Users</h3>
                   <p>Accounts allowed to access this Railway app. Enter a temporary password below an account to reset it.</p>
                 </div>
+                <div class="user-backup-actions">
+                  <button class="secondary-action" id="exportUsersBackup" type="button">Export Users Backup</button>
+                  <label class="secondary-action import-users-button">
+                    Import Users Backup
+                    <input id="importUsersBackup" type="file" accept="application/json,.json" />
+                  </label>
+                </div>
               </div>
               <div id="usersList" class="review-list"></div>
             </section>
@@ -651,6 +658,6 @@
     </section>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="script.js?v=20260710-search-autofill-fix"></script>
+    <script src="script.js?v=20260710-user-backup"></script>
   </body>
 </html>
