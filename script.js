@@ -22,9 +22,6 @@ const APP_STATE_KEY = "fleetTechnicalOversightState.v1";
 let remoteSaveTimer = null;
 let remoteStateAvailable = false;
 let currentUser = null;
-let periods = [];
-let currentPeriod = "";
-let currentPeriodLocked = false;
 
 const reportTemplate = {
   "Hull": [
@@ -185,13 +182,9 @@ let drydockPlans = vessels.map((vessel, index) => {
 });
 let submittedReports = [];
 
-function localStateKey() {
-  return currentPeriod ? `${APP_STATE_KEY}.${currentPeriod}` : APP_STATE_KEY;
-}
-
 function loadAppState() {
   try {
-    const saved = JSON.parse(localStorage.getItem(localStateKey()) || "null");
+    const saved = JSON.parse(localStorage.getItem(APP_STATE_KEY) || "null");
     if (!saved) return;
     if (Array.isArray(saved.reports)) {
       reports.splice(0, reports.length, ...saved.reports);
@@ -218,29 +211,13 @@ function saveAppState() {
     submittedReports,
     savedAt: new Date().toISOString(),
   };
-  localStorage.setItem(localStateKey(), JSON.stringify(state));
+  localStorage.setItem(APP_STATE_KEY, JSON.stringify(state));
   queueRemoteSave(state);
-}
-
-async function loadPeriods() {
-  try {
-    const data = await apiRequest("/api/periods");
-    periods = Array.isArray(data.periods) ? data.periods : [];
-  } catch (error) {
-    periods = [];
-  }
-  if (!periods.length) return;
-  const stillExists = periods.some((period) => period.key === currentPeriod);
-  if (!stillExists) {
-    currentPeriod = periods[periods.length - 1].key;
-  }
 }
 
 async function loadRemoteState() {
   try {
-    await loadPeriods();
-    const query = currentPeriod ? `?period=${encodeURIComponent(currentPeriod)}` : "";
-    const response = await fetch(`/api/state${query}`, { cache: "no-store" });
+    const response = await fetch("/api/state", { cache: "no-store" });
     if (!response.ok) return false;
     const saved = await response.json();
     const hasRemoteState = Array.isArray(saved.reports) && Array.isArray(saved.claims) && Array.isArray(saved.drydockPlans);
@@ -249,19 +226,12 @@ async function loadRemoteState() {
       await saveRemoteState({ reports, claims, drydockPlans, submittedReports });
       return true;
     }
-    currentPeriod = saved.period || currentPeriod;
-    currentPeriodLocked = Boolean(saved.locked);
-    const periodLabel = periods.find((period) => period.key === currentPeriod)?.label || currentPeriod;
-    const restoredReports = saved.reports.length || !vessels.length ? saved.reports : buildBlankReportsForVessels(vessels, periodLabel);
-    reports.splice(0, reports.length, ...restoredReports);
+    reports.splice(0, reports.length, ...saved.reports);
     claims = saved.claims;
     drydockPlans = saved.drydockPlans;
     submittedReports = Array.isArray(saved.submittedReports) ? saved.submittedReports : [];
-    localStorage.setItem(localStateKey(), JSON.stringify(saved));
+    localStorage.setItem(APP_STATE_KEY, JSON.stringify(saved));
     remoteStateAvailable = true;
-    if (!saved.reports.length && restoredReports.length) {
-      await saveRemoteState({ reports, claims, drydockPlans, submittedReports });
-    }
     return true;
   } catch (error) {
     if (String(error.message || "").includes("Sign in required")) {
@@ -282,11 +252,6 @@ function queueRemoteSave(state) {
 function updateSyncStatus() {
   const status = document.querySelector("#syncStatus");
   if (!status) return;
-  if (currentPeriodLocked) {
-    status.textContent = "Month locked (read-only)";
-    status.className = "sync-status local";
-    return;
-  }
   status.textContent = remoteStateAvailable ? "Server sync on" : "Local fallback";
   status.className = `sync-status ${remoteStateAvailable ? "online" : "local"}`;
 }
@@ -298,13 +263,7 @@ async function saveRemoteState(state = { reports, claims, drydockPlans, submitte
       updateSyncStatus();
       return false;
     }
-    if (currentPeriodLocked && currentUser.role !== "admin") {
-      remoteStateAvailable = true;
-      updateSyncStatus();
-      return false;
-    }
-    const query = currentPeriod ? `?period=${encodeURIComponent(currentPeriod)}` : "";
-    const response = await fetch(`/api/state${query}`, {
+    const response = await fetch("/api/state", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(state)
@@ -360,6 +319,16 @@ function applyAuthState() {
   if (chip) {
     chip.textContent = currentUser ? `${currentUser.name} (${currentUser.role.replace("_", " ")})` : "Not signed in";
   }
+  if (currentUser?.role !== "admin") {
+    document.querySelector("#usersList").innerHTML = "";
+    if (document.querySelector("#users")?.classList.contains("active")) {
+      setView("dashboard");
+    }
+  }
+}
+
+function userIsAdmin() {
+  return currentUser?.role === "admin";
 }
 
 function resetDashboardFilters() {
@@ -434,34 +403,6 @@ function refreshCategoryScores(scores, parameters) {
   categories.forEach((category) => {
     scores[category] = categoryAverage(parameters[category]);
   });
-}
-
-function buildBlankReportForVessel(vesselName, periodLabel) {
-  const scores = {};
-  const parameters = {};
-  categories.forEach((category) => {
-    parameters[category] = reportTemplate[category].map((item) => ({
-      ...item,
-      score: 5,
-      comment: "",
-      fieldValues: Object.fromEntries(item.fields.map((field) => [field, ""])),
-    }));
-    scores[category] = categoryAverage(parameters[category]);
-  });
-  return {
-    vessel: vesselName,
-    period: periodLabel,
-    status: "Draft",
-    scores,
-    parameters,
-    remarks: "",
-    openIssues: issueCount(scores),
-    targetDate: "",
-  };
-}
-
-function buildBlankReportsForVessels(vesselList, periodLabel) {
-  return vesselList.map((vessel) => buildBlankReportForVessel(vessel.vessel, periodLabel));
 }
 
 function defaultRemark(vessel, index) {
@@ -1074,21 +1015,12 @@ function renderReportEditor() {
     });
     return;
   }
-  const isLocked = currentPeriodLocked && currentUser?.role !== "admin";
-  document.querySelector("#saveReport").disabled = isLocked;
-  document.querySelector("#submitReport").disabled = isLocked;
-  document.querySelector("#downloadReportPdf").disabled = false;
-  document.querySelector(".report-editor")?.classList.toggle("locked-editor", isLocked);
+  reportButtons.forEach((selector) => {
+    document.querySelector(selector).disabled = false;
+  });
   const selected = document.querySelector("#reportVessel").value || vessels[0].vessel;
   const vessel = vessels.find((item) => item.vessel === selected);
   const report = reports.find((item) => item.vessel === selected);
-  if (!report) {
-    document.querySelector("#reportMeta").innerHTML = `<div class="empty-access-message">No report found for ${selected} in this reporting month yet.</div>`;
-    document.querySelector("#scoreInputs").innerHTML = "";
-    document.querySelector("#reportRemarks").value = "";
-    document.querySelector("#reportChecklist").innerHTML = "";
-    return;
-  }
 
   document.querySelector("#reportMeta").innerHTML = [
     ["Owner", vessel.owner],
@@ -1218,7 +1150,10 @@ function renderReviewQueue() {
 }
 
 async function renderUsers() {
-  if (currentUser?.role !== "admin") return;
+  if (!userIsAdmin()) {
+    document.querySelector("#usersList").innerHTML = "";
+    return;
+  }
   try {
     const data = await apiRequest("/api/users");
     document.querySelector("#usersList").innerHTML = data.users
@@ -1496,83 +1431,11 @@ function populateSelects() {
   }
 }
 
-function renderPeriodSelector() {
-  const select = document.querySelector("#periodSelect");
-  const badge = document.querySelector("#periodLockBadge");
-  const lockButton = document.querySelector("#togglePeriodLockButton");
-  if (!select) return;
-  const sorted = periods.slice().sort((a, b) => a.key.localeCompare(b.key));
-  select.innerHTML = sorted
-    .map((period) => `<option value="${period.key}" ${period.key === currentPeriod ? "selected" : ""}>${period.label}${period.locked ? " (locked)" : ""}</option>`)
-    .join("");
-  if (badge) badge.hidden = !currentPeriodLocked;
-  if (lockButton) lockButton.textContent = currentPeriodLocked ? "Unlock month" : "Lock month";
-}
-
-async function renderAll() {
-  resetDashboardFilters();
-  renderPeriodSelector();
-  renderDashboard();
-  renderVesselRegister();
-  renderReportEditor();
-  renderClaims();
-  renderDrydock();
-  renderAiReview();
-  renderReviewQueue();
-  renderSubmittedArchive();
-  renderUsers();
-  updateSyncStatus();
-}
-
-async function switchPeriod(periodKey) {
-  if (!periodKey || periodKey === currentPeriod) return;
-  currentPeriod = periodKey;
-  await loadRemoteState();
-  await renderAll();
-  showToast(`Switched to ${periods.find((period) => period.key === periodKey)?.label || periodKey}.`);
-}
-
-async function createNewPeriod() {
-  const now = new Date();
-  const suggestedKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-  const key = window.prompt("New reporting month (YYYY-MM):", suggestedKey);
-  if (!key) return;
-  const label = window.prompt("Display label for this month:", new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric" }).format(now));
-  if (!label) return;
-  const carryForward = window.confirm("Carry forward last month's scores as a starting draft? Choose Cancel to start blank.");
-  try {
-    await apiRequest("/api/periods", {
-      method: "POST",
-      body: JSON.stringify({ key, label, carryForward }),
-    });
-    await loadPeriods();
-    currentPeriod = key;
-    await loadRemoteState();
-    await renderAll();
-    showToast(`Created reporting month ${label}.`);
-  } catch (error) {
-    showToast(error.message);
-  }
-}
-
-async function togglePeriodLock() {
-  if (!currentPeriod) return;
-  try {
-    const data = await apiRequest(`/api/periods/${encodeURIComponent(currentPeriod)}/lock`, {
-      method: "POST",
-      body: JSON.stringify({ locked: !currentPeriodLocked }),
-    });
-    currentPeriodLocked = Boolean(data.period?.locked);
-    await loadPeriods();
-    renderPeriodSelector();
-    updateSyncStatus();
-    showToast(currentPeriodLocked ? "Reporting month locked." : "Reporting month unlocked.");
-  } catch (error) {
-    showToast(error.message);
-  }
-}
-
 function setView(viewId) {
+  if (viewId === "users" && !userIsAdmin()) {
+    showToast("Only the administrator can manage users and reset passwords.");
+    viewId = "dashboard";
+  }
   document.querySelectorAll(".view").forEach((view) => view.classList.toggle("active", view.id === viewId));
   document.querySelectorAll(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.view === viewId));
   const titles = {
@@ -1622,7 +1485,16 @@ function bindEvents() {
       currentUser = data.user;
       applyAuthState();
       await loadRemoteState();
-      await renderAll();
+      resetDashboardFilters();
+      renderDashboard();
+      renderReportEditor();
+      renderClaims();
+      renderDrydock();
+      renderAiReview();
+      renderReviewQueue();
+      renderSubmittedArchive();
+      renderUsers();
+      updateSyncStatus();
       showToast("Signed in successfully.");
     } catch (error) {
       showToast(error.message);
@@ -1636,18 +1508,6 @@ function bindEvents() {
     applyAuthState();
     updateSyncStatus();
     showToast("Signed out.");
-  });
-
-  document.querySelector("#periodSelect").addEventListener("change", (event) => {
-    switchPeriod(event.target.value);
-  });
-
-  document.querySelector("#newPeriodButton").addEventListener("click", () => {
-    createNewPeriod();
-  });
-
-  document.querySelector("#togglePeriodLockButton").addEventListener("click", () => {
-    togglePeriodLock();
   });
 
   document.querySelector("#changePasswordButton").addEventListener("click", () => {
@@ -1685,6 +1545,10 @@ function bindEvents() {
   });
 
   document.querySelector("#usersList").addEventListener("click", async (event) => {
+    if (!userIsAdmin()) {
+      showToast("Only the administrator can manage users and reset passwords.");
+      return;
+    }
     const accessButton = event.target.closest("[data-save-vessel-access]");
     if (accessButton) {
       const userId = accessButton.dataset.saveVesselAccess;
@@ -1725,6 +1589,10 @@ function bindEvents() {
 
   document.querySelector("#userForm").addEventListener("submit", async (event) => {
     event.preventDefault();
+    if (!userIsAdmin()) {
+      showToast("Only the administrator can create users.");
+      return;
+    }
     try {
       await apiRequest("/api/users", {
         method: "POST",
@@ -1941,7 +1809,17 @@ async function init() {
   if (currentUser) {
     await loadRemoteState();
   }
-  await renderAll();
+  resetDashboardFilters();
+  renderDashboard();
+  renderVesselRegister();
+  renderReportEditor();
+  renderClaims();
+  renderDrydock();
+  renderAiReview();
+  renderReviewQueue();
+  renderSubmittedArchive();
+  renderUsers();
+  updateSyncStatus();
 }
 
 init();

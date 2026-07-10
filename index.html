@@ -6,7 +6,7 @@
     <title>Fleet Technical Oversight</title>
     <meta name="theme-color" content="#10243a" />
     <link rel="manifest" href="manifest.webmanifest" />
-    <link rel="stylesheet" href="styles.css?v=20260624-filter-fix" />
+    <link rel="stylesheet" href="styles.css?v=20260710-admin-user-gate" />
   </head>
   <body>
     <div class="app-shell">
@@ -49,10 +49,7 @@
         </nav>
         <div class="sidebar-note">
           <strong>Reporting period</strong>
-          <select id="periodSelect" aria-label="Select reporting month"></select>
-          <span id="periodLockBadge" class="period-lock-badge" hidden>Locked</span>
-          <button class="link-action admin-only" id="newPeriodButton" type="button">+ New month</button>
-          <button class="link-action admin-only" id="togglePeriodLockButton" type="button">Lock month</button>
+          <span>May 2026</span>
         </div>
       </aside>
 
@@ -608,6 +605,6 @@
     </section>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="script.js?v=20260624-filter-fix"></script>
+    <script src="script.js?v=20260710-admin-user-gate"></script>
   </body>
 </html>
