@@ -58,6 +58,18 @@ ADMIN_PASSWORD=choose-a-strong-password
 
 After signing in as admin, open the **Users** tab and create technical manager accounts.
 
+If the administrator cannot sign in later, set these Railway variables and redeploy:
+
+```text
+ADMIN_EMAIL=your-admin-email@company.com
+ADMIN_PASSWORD=new-temporary-admin-password
+RESET_ADMIN_PASSWORD=true
+```
+
+After signing in successfully, change the admin password inside the app. You can then
+remove `RESET_ADMIN_PASSWORD` or set it to `false` so the stored admin password is not
+reset again on every restart.
+
 ### Vessel-level access
 
 When creating a user, select the vessels that should be linked to that account. An

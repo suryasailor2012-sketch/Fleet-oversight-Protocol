@@ -84,6 +84,55 @@ function writeUsers(users) {
   fs.writeFileSync(usersFile, JSON.stringify(users, null, 2));
 }
 
+function resetFlagEnabled(value) {
+  return ["1", "true", "yes", "on"].includes(String(value || "").trim().toLowerCase());
+}
+
+function ensureBootstrapAdmin() {
+  const adminEmail = String(process.env.ADMIN_EMAIL || "").trim().toLowerCase();
+  const adminPassword = String(process.env.ADMIN_PASSWORD || "");
+  const shouldResetPassword = resetFlagEnabled(process.env.RESET_ADMIN_PASSWORD);
+  if (!adminEmail) return;
+
+  const users = readUsers();
+  let changed = false;
+  let admin = users.find((user) => String(user.email || "").toLowerCase() === adminEmail);
+
+  if (!admin) {
+    admin = {
+      id: crypto.randomUUID(),
+      name: "System Admin",
+      email: adminEmail,
+      role: "admin",
+      assignedVessels: [],
+      passwordHash: hashPassword(adminPassword || "ChangeMe123!"),
+      createdAt: new Date().toISOString()
+    };
+    users.push(admin);
+    changed = true;
+  }
+
+  if (admin.role !== "admin") {
+    admin.role = "admin";
+    changed = true;
+  }
+
+  if (shouldResetPassword) {
+    if (adminPassword.length < 8) {
+      console.warn("RESET_ADMIN_PASSWORD was requested, but ADMIN_PASSWORD is shorter than 8 characters. Password was not changed.");
+    } else {
+      admin.passwordHash = hashPassword(adminPassword);
+      admin.passwordUpdatedAt = new Date().toISOString();
+      changed = true;
+    }
+  }
+
+  if (changed) {
+    writeUsers(users);
+    console.log(`Bootstrap admin ready: ${adminEmail}${shouldResetPassword ? " (password reset requested)" : ""}`);
+  }
+}
+
 function writeState(state) {
   ensureDataDir();
   const payload = {
@@ -416,6 +465,8 @@ async function handleApi(request, response) {
 
   return false;
 }
+
+ensureBootstrapAdmin();
 
 const server = http.createServer(async (request, response) => {
   if (await handleApi(request, response)) return;
