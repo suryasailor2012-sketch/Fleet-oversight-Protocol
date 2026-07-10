@@ -23,6 +23,7 @@ let remoteSaveTimer = null;
 let remoteStateAvailable = false;
 let currentUser = null;
 let currentReportingMonth = "2026-05";
+let selectedSubmittedReportId = null;
 
 const reportTemplate = {
   "Hull": [
@@ -137,6 +138,10 @@ function periodLabelToMonthValue(label) {
 
 function activePeriodLabel() {
   return monthValueToLabel(currentReportingMonth);
+}
+
+function submittedReportId(vesselName, period) {
+  return `${vesselName}-${period}`.replace(/[^a-z0-9]+/gi, "_").toLowerCase();
 }
 
 function createReportForVessel(vessel, index, period = activePeriodLabel()) {
@@ -345,6 +350,8 @@ function applyAuthState() {
   }
   if (currentUser?.role !== "admin") {
     document.querySelector("#usersList").innerHTML = "";
+    selectedSubmittedReportId = null;
+    if (document.querySelector("#submittedReportEditor")) renderSubmittedReportEditor(null);
     if (document.querySelector("#users")?.classList.contains("active")) {
       setView("dashboard");
     }
@@ -493,6 +500,15 @@ function escapePdfText(text) {
     .replace(/\(/g, "\\(")
     .replace(/\)/g, "\\)")
     .replace(/\r?\n/g, " ");
+}
+
+function escapeHtml(text) {
+  return String(text ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 function wrapPdfText(text, maxChars = 95) {
@@ -767,7 +783,7 @@ function archiveSubmittedReport(report) {
   const vessel = vessels.find((item) => item.vessel === report.vessel);
   const score = reportAverage(snapshot);
   const archived = {
-    id: `${report.vessel}-${report.period}`.replace(/[^a-z0-9]+/gi, "_").toLowerCase(),
+    id: submittedReportId(report.vessel, report.period),
     vessel: report.vessel,
     owner: vessel?.owner || "",
     period: report.period,
@@ -1264,13 +1280,165 @@ function renderSubmittedArchive() {
               <strong>${item.vessel} - ${item.period} <span class="score-pill ${status.className}">${item.averageScore.toFixed(1)}</span></strong>
               <p>Submitted: ${new Date(item.submittedAt).toLocaleString()} | Owner: ${item.owner || "-"} | Open issues: ${item.openIssues}</p>
               <button class="secondary-action pdf-report-button" data-submitted-pdf="${item.id}">Download PDF</button>
+              ${userIsAdmin() ? `<button class="secondary-action" data-edit-submitted="${item.id}">Edit Submitted Report</button>` : ""}
             </article>
           `;
         })
         .join("")
     : `<article class="review-card"><strong>No submitted reports yet</strong><p>Reports will appear here after technical managers click Submit for Owner Review.</p></article>`;
 
+  if (selectedSubmittedReportId && !submittedReports.some((item) => item.id === selectedSubmittedReportId)) {
+    selectedSubmittedReportId = null;
+  }
+  renderSubmittedReportEditor(selectedSubmittedReportId);
   renderArchiveInfographics();
+}
+
+function renderSubmittedReportEditor(reportId) {
+  const editor = document.querySelector("#submittedReportEditor");
+  if (!editor) return;
+  if (!userIsAdmin() || !reportId) {
+    editor.innerHTML = "";
+    return;
+  }
+
+  const archiveItem = submittedReports.find((item) => item.id === reportId);
+  if (!archiveItem?.report) {
+    editor.innerHTML = "";
+    return;
+  }
+  const report = archiveItem.report;
+  const score = reportAverage(report);
+
+  editor.innerHTML = `
+    <div class="panel-heading submitted-editor-heading">
+      <div>
+        <h3>Edit Submitted Report</h3>
+        <p>${report.vessel} - ${report.period} | Current archive score ${score.toFixed(1)}</p>
+      </div>
+      <button class="secondary-action" type="button" id="closeSubmittedEditor">Close</button>
+    </div>
+    <div class="meta-grid">
+      <label class="meta-edit-item">
+        <span>Reporting month</span>
+        <input id="submittedEditPeriod" type="month" value="${periodLabelToMonthValue(report.period)}" />
+      </label>
+      <label class="meta-edit-item">
+        <span>Status</span>
+        <select id="submittedEditStatus">
+          ${["Owner Review", "Approved", "Submitted", "Draft"].map((status) => `<option ${report.status === status ? "selected" : ""}>${status}</option>`).join("")}
+        </select>
+      </label>
+      <label class="meta-edit-item">
+        <span>Open issues</span>
+        <input id="submittedEditOpenIssues" type="number" min="0" step="1" value="${Number(report.openIssues || 0)}" />
+      </label>
+    </div>
+    <label class="field-block">
+      <span>Major technical / operational remarks</span>
+      <textarea id="submittedEditRemarks" rows="4">${escapeHtml(report.remarks || "")}</textarea>
+    </label>
+    <div class="score-grid submitted-edit-score-grid">
+      ${categories.map((category) => `
+        <article class="category-section">
+          <div class="category-header">
+            <div>
+              <h4>${category}</h4>
+              <p>${(report.parameters?.[category] || []).length} reporting parameter${(report.parameters?.[category] || []).length === 1 ? "" : "s"}</p>
+            </div>
+            <span class="score-pill ${statusForScore(report.scores?.[category] || 0).className}">${Number(report.scores?.[category] || 0).toFixed(1)}</span>
+          </div>
+          <div class="parameter-list">
+            ${(report.parameters?.[category] || []).map((parameter, parameterIndex) => `
+              <div class="parameter-row">
+                <div class="parameter-copy">
+                  <strong>${escapeHtml(parameter.name)}</strong>
+                  <p>${escapeHtml(parameter.guidance || "")}</p>
+                  <div class="field-entry-grid">
+                    ${(parameter.fields || []).map((field) => `
+                      <label>
+                        <span>${escapeHtml(field)}</span>
+                        <input ${inputTypeForField(field)} value="${escapeHtml(parameter.fieldValues?.[field] ?? "")}" data-submitted-field="${escapeHtml(category)}" data-submitted-index="${parameterIndex}" data-field-name="${escapeHtml(field)}" />
+                      </label>
+                    `).join("")}
+                  </div>
+                  <label class="parameter-comment">
+                    <span>Comments / action plan</span>
+                    <textarea rows="2" data-submitted-note="${escapeHtml(category)}" data-submitted-index="${parameterIndex}">${escapeHtml(parameter.comment || "")}</textarea>
+                  </label>
+                </div>
+                <div class="parameter-score">
+                  <label>
+                    <span>Score</span>
+                    <strong>${Number(parameter.score || 0).toFixed(1)}</strong>
+                  </label>
+                  <input type="range" min="0" max="10" step="0.1" value="${Number(parameter.score || 0)}" data-submitted-score="${escapeHtml(category)}" data-submitted-index="${parameterIndex}" />
+                </div>
+              </div>
+            `).join("")}
+          </div>
+        </article>
+      `).join("")}
+    </div>
+    <div class="form-actions">
+      <button class="primary-action" type="button" id="saveSubmittedReportEdit">Save Submitted Report</button>
+      <button class="secondary-action" type="button" id="cancelSubmittedReportEdit">Cancel</button>
+    </div>
+  `;
+}
+
+function saveSubmittedReportEdit() {
+  if (!userIsAdmin() || !selectedSubmittedReportId) {
+    showToast("Only the administrator can edit submitted reports.");
+    return;
+  }
+  const archiveItem = submittedReports.find((item) => item.id === selectedSubmittedReportId);
+  if (!archiveItem?.report) return;
+  const report = archiveItem.report;
+  const newPeriod = monthValueToLabel(document.querySelector("#submittedEditPeriod").value);
+  const newId = submittedReportId(report.vessel, newPeriod);
+  if (newId !== archiveItem.id && submittedReports.some((item) => item.id === newId)) {
+    showToast(`${report.vessel} already has a submitted report for ${newPeriod}.`);
+    return;
+  }
+
+  report.period = newPeriod;
+  report.status = document.querySelector("#submittedEditStatus").value;
+  report.openIssues = Number(document.querySelector("#submittedEditOpenIssues").value || 0);
+  report.remarks = document.querySelector("#submittedEditRemarks").value;
+
+  document.querySelectorAll("[data-submitted-score]").forEach((input) => {
+    const category = input.dataset.submittedScore;
+    const index = Number(input.dataset.submittedIndex);
+    report.parameters[category][index].score = Number(input.value);
+  });
+  document.querySelectorAll("[data-submitted-field]").forEach((input) => {
+    const category = input.dataset.submittedField;
+    const index = Number(input.dataset.submittedIndex);
+    const field = input.dataset.fieldName;
+    report.parameters[category][index].fieldValues[field] = input.value;
+  });
+  document.querySelectorAll("[data-submitted-note]").forEach((input) => {
+    const category = input.dataset.submittedNote;
+    const index = Number(input.dataset.submittedIndex);
+    report.parameters[category][index].comment = input.value;
+  });
+
+  refreshCategoryScores(report.scores, report.parameters);
+  report.openIssues = Number.isFinite(report.openIssues) ? report.openIssues : issueCount(report.scores);
+  archiveItem.id = newId;
+  archiveItem.period = newPeriod;
+  archiveItem.averageScore = reportAverage(report);
+  archiveItem.openIssues = report.openIssues;
+  archiveItem.status = report.status;
+  archiveItem.categoryScores = { ...report.scores };
+  archiveItem.editedAt = new Date().toISOString();
+  archiveItem.editedBy = currentUser?.email || "";
+
+  saveAppState();
+  selectedSubmittedReportId = newId;
+  renderSubmittedArchive();
+  showToast(`${report.vessel} ${report.period} submitted report updated.`);
 }
 
 function renderArchiveInfographics() {
@@ -1760,9 +1928,32 @@ function bindEvents() {
   });
 
   document.querySelector("#submittedReportsList").addEventListener("click", (event) => {
+    const editId = event.target.dataset.editSubmitted;
+    if (editId) {
+      if (!userIsAdmin()) {
+        showToast("Only the administrator can edit submitted reports.");
+        return;
+      }
+      selectedSubmittedReportId = editId;
+      renderSubmittedReportEditor(editId);
+      document.querySelector("#submittedReportEditor").scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
     const reportId = event.target.dataset.submittedPdf;
     if (!reportId) return;
     downloadSubmittedReportPdf(reportId);
+  });
+
+  document.querySelector("#submittedReportEditor").addEventListener("click", (event) => {
+    if (event.target.id === "saveSubmittedReportEdit") {
+      saveSubmittedReportEdit();
+      return;
+    }
+    if (event.target.id === "cancelSubmittedReportEdit" || event.target.id === "closeSubmittedEditor") {
+      selectedSubmittedReportId = null;
+      renderSubmittedReportEditor(null);
+      showToast("Submitted report edit closed.");
+    }
   });
 
   document.querySelector("#addClaim").addEventListener("click", () => {

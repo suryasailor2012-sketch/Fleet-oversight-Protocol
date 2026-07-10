@@ -483,6 +483,27 @@ textarea {
   margin-bottom: 16px;
 }
 
+.submitted-report-editor {
+  margin-top: 18px;
+  border-top: 1px solid var(--line);
+  padding-top: 18px;
+}
+
+.submitted-editor-heading {
+  margin-bottom: 14px;
+}
+
+.submitted-edit-score-grid {
+  max-height: 620px;
+  overflow: auto;
+  padding-right: 6px;
+}
+
+.meta-edit-item {
+  display: grid;
+  gap: 6px;
+}
+
 .score-control,
 .category-section {
   border: 1px solid var(--line);
