@@ -6,7 +6,7 @@
     <title>Fleet Technical Oversight</title>
     <meta name="theme-color" content="#10243a" />
     <link rel="manifest" href="manifest.webmanifest" />
-    <link rel="stylesheet" href="styles.css?v=20260710-submitted-month-edit" />
+    <link rel="stylesheet" href="styles.css?v=20260710-dashboard-trends" />
   </head>
   <body>
     <div class="app-shell">
@@ -129,6 +129,50 @@
                 </div>
               </div>
               <div id="categoryBars" class="bar-list"></div>
+            </section>
+          </div>
+
+          <div class="trend-layout">
+            <section class="panel">
+              <div class="panel-heading">
+                <div>
+                  <h3>Monthly Score Trend</h3>
+                  <p>Average submitted score by reporting month</p>
+                </div>
+              </div>
+              <div id="scoreTrendChart" class="chart-box"></div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-heading">
+                <div>
+                  <h3>Status Mix</h3>
+                  <p>Healthy, watch and critical vessel split</p>
+                </div>
+              </div>
+              <div id="statusPieChart" class="chart-box pie-chart-box"></div>
+            </section>
+          </div>
+
+          <div class="trend-layout">
+            <section class="panel">
+              <div class="panel-heading">
+                <div>
+                  <h3>Submitted Report Volume</h3>
+                  <p>Reports received each month</p>
+                </div>
+              </div>
+              <div id="submissionVolumeChart" class="chart-box"></div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-heading">
+                <div>
+                  <h3>Weakest Categories</h3>
+                  <p>Lowest category averages from submitted reports</p>
+                </div>
+              </div>
+              <div id="weakCategoryChart" class="bar-list"></div>
             </section>
           </div>
 
@@ -607,6 +651,6 @@
     </section>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="script.js?v=20260710-submitted-month-edit"></script>
+    <script src="script.js?v=20260710-dashboard-trends"></script>
   </body>
 </html>

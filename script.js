@@ -490,6 +490,145 @@ function statusForScore(score) {
   return { label: "Healthy", className: "good" };
 }
 
+function periodSortValue(period) {
+  const [year, month] = periodLabelToMonthValue(period).split("-").map(Number);
+  return (year || 0) * 100 + (month || 0);
+}
+
+function dashboardTrendSource(visibleNames, visibleReports) {
+  const submitted = submittedReports
+    .filter((item) => visibleNames.has(item.vessel))
+    .map((item) => ({
+      period: item.period,
+      vessel: item.vessel,
+      averageScore: Number(item.averageScore || 0),
+      openIssues: Number(item.openIssues || 0),
+      categoryScores: item.categoryScores || {},
+    }));
+  if (submitted.length) return submitted;
+  return visibleReports.map((report) => ({
+    period: report.period,
+    vessel: report.vessel,
+    averageScore: reportAverage(report),
+    openIssues: Number(report.openIssues || 0),
+    categoryScores: report.scores || {},
+  }));
+}
+
+function groupByPeriod(items) {
+  const grouped = new Map();
+  items.forEach((item) => {
+    if (!grouped.has(item.period)) grouped.set(item.period, []);
+    grouped.get(item.period).push(item);
+  });
+  return [...grouped.entries()]
+    .map(([period, values]) => ({ period, values }))
+    .sort((a, b) => periodSortValue(a.period) - periodSortValue(b.period));
+}
+
+function renderEmptyChart(selector, message) {
+  const target = document.querySelector(selector);
+  if (target) target.innerHTML = `<div class="empty-chart">${message}</div>`;
+}
+
+function renderLineChart(selector, points) {
+  const target = document.querySelector(selector);
+  if (!target) return;
+  if (!points.length) {
+    renderEmptyChart(selector, "No report data available yet.");
+    return;
+  }
+  const width = 620;
+  const height = 220;
+  const pad = 34;
+  const minY = 0;
+  const maxY = 10;
+  const xStep = points.length > 1 ? (width - pad * 2) / (points.length - 1) : 0;
+  const coords = points.map((point, index) => {
+    const x = points.length > 1 ? pad + index * xStep : width / 2;
+    const y = height - pad - ((point.value - minY) / (maxY - minY)) * (height - pad * 2);
+    return { ...point, x, y };
+  });
+  const path = coords.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(" ");
+  target.innerHTML = `
+    <svg class="trend-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Monthly score trend">
+      <line x1="${pad}" y1="${height - pad}" x2="${width - pad}" y2="${height - pad}" class="chart-axis" />
+      <line x1="${pad}" y1="${pad}" x2="${pad}" y2="${height - pad}" class="chart-axis" />
+      <path d="${path}" class="line-chart-path" />
+      ${coords.map((point) => `
+        <g>
+          <circle cx="${point.x}" cy="${point.y}" r="5" class="line-chart-dot" />
+          <text x="${point.x}" y="${point.y - 10}" text-anchor="middle" class="chart-value">${point.value.toFixed(1)}</text>
+          <text x="${point.x}" y="${height - 10}" text-anchor="middle" class="chart-label">${escapeHtml(point.label)}</text>
+        </g>
+      `).join("")}
+    </svg>
+  `;
+}
+
+function renderColumnChart(selector, points) {
+  const target = document.querySelector(selector);
+  if (!target) return;
+  if (!points.length) {
+    renderEmptyChart(selector, "No submitted reports yet.");
+    return;
+  }
+  const width = 620;
+  const height = 220;
+  const pad = 34;
+  const maxValue = Math.max(1, ...points.map((point) => point.value));
+  const gap = 14;
+  const barWidth = Math.max(22, (width - pad * 2 - gap * (points.length - 1)) / points.length);
+  target.innerHTML = `
+    <svg class="trend-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Submitted report volume">
+      <line x1="${pad}" y1="${height - pad}" x2="${width - pad}" y2="${height - pad}" class="chart-axis" />
+      ${points.map((point, index) => {
+        const x = pad + index * (barWidth + gap);
+        const barHeight = (point.value / maxValue) * (height - pad * 2);
+        const y = height - pad - barHeight;
+        return `
+          <rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barWidth.toFixed(1)}" height="${barHeight.toFixed(1)}" class="column-chart-bar" />
+          <text x="${(x + barWidth / 2).toFixed(1)}" y="${y - 8}" text-anchor="middle" class="chart-value">${point.value}</text>
+          <text x="${(x + barWidth / 2).toFixed(1)}" y="${height - 10}" text-anchor="middle" class="chart-label">${escapeHtml(point.label)}</text>
+        `;
+      }).join("")}
+    </svg>
+  `;
+}
+
+function renderPieChart(selector, slices) {
+  const target = document.querySelector(selector);
+  if (!target) return;
+  const total = slices.reduce((sum, slice) => sum + slice.value, 0);
+  if (!total) {
+    renderEmptyChart(selector, "No score status available.");
+    return;
+  }
+  let offset = 0;
+  const radius = 70;
+  const circumference = 2 * Math.PI * radius;
+  const colors = { Healthy: "#138a44", Watch: "#b87800", Critical: "#c0392b" };
+  const rings = slices.map((slice) => {
+    const dash = (slice.value / total) * circumference;
+    const segment = `<circle r="${radius}" cx="90" cy="90" class="pie-segment" stroke="${colors[slice.label]}" stroke-dasharray="${dash} ${circumference - dash}" stroke-dashoffset="${-offset}" />`;
+    offset += dash;
+    return segment;
+  }).join("");
+  target.innerHTML = `
+    <div class="pie-chart">
+      <svg viewBox="0 0 180 180" role="img" aria-label="Status mix pie chart">
+        <circle r="${radius}" cx="90" cy="90" class="pie-bg" />
+        ${rings}
+        <text x="90" y="86" text-anchor="middle" class="pie-total">${total}</text>
+        <text x="90" y="106" text-anchor="middle" class="pie-caption">vessels</text>
+      </svg>
+      <div class="pie-legend">
+        ${slices.map((slice) => `<div><span style="background:${colors[slice.label]}"></span>${slice.label}: <strong>${slice.value}</strong></div>`).join("")}
+      </div>
+    </div>
+  `;
+}
+
 function money(value) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(value);
 }
@@ -1007,7 +1146,63 @@ function renderDashboard() {
   document.querySelector("#fleetTable tbody").innerHTML = rows.join("");
 
   renderCategoryBars(visibleReports);
+  renderDashboardTrends(visibleNames, visibleReports);
   renderPriorityItems();
+}
+
+function shortPeriodLabel(period) {
+  const [year, month] = periodLabelToMonthValue(period).split("-").map(Number);
+  const date = new Date(year || 2026, (month || 1) - 1, 1);
+  return new Intl.DateTimeFormat("en-GB", { month: "short", year: "2-digit" }).format(date);
+}
+
+function renderDashboardTrends(visibleNames, visibleReports) {
+  const source = dashboardTrendSource(visibleNames, visibleReports);
+  const grouped = groupByPeriod(source);
+  const monthlyAverage = grouped.map((group) => ({
+    label: shortPeriodLabel(group.period),
+    value: average(group.values.map((item) => item.averageScore)),
+  }));
+  const monthlyVolume = grouped.map((group) => ({
+    label: shortPeriodLabel(group.period),
+    value: group.values.length,
+  }));
+
+  const latestReports = visibleReports.length ? visibleReports : source.filter((item) => grouped.at(-1)?.period === item.period);
+  const statusCounts = [
+    { label: "Healthy", value: 0 },
+    { label: "Watch", value: 0 },
+    { label: "Critical", value: 0 },
+  ];
+  latestReports.forEach((item) => {
+    const status = statusForScore(item.averageScore ?? reportAverage(item));
+    const slice = statusCounts.find((entry) => entry.label === status.label);
+    if (slice) slice.value += 1;
+  });
+
+  const categoryAverages = categories
+    .map((category) => {
+      const values = source.map((item) => item.categoryScores?.[category]).filter((value) => typeof value === "number");
+      return { category, value: values.length ? average(values) : 0 };
+    })
+    .filter((item) => item.value > 0)
+    .sort((a, b) => a.value - b.value)
+    .slice(0, 6);
+
+  renderLineChart("#scoreTrendChart", monthlyAverage);
+  renderColumnChart("#submissionVolumeChart", monthlyVolume);
+  renderPieChart("#statusPieChart", statusCounts);
+  document.querySelector("#weakCategoryChart").innerHTML = categoryAverages.length
+    ? categoryAverages.map((item) => {
+        const status = statusForScore(item.value);
+        return `
+          <div class="bar-row">
+            <div class="bar-label"><span>${item.category}</span><strong>${item.value.toFixed(1)}</strong></div>
+            <div class="bar-track"><div class="bar-fill ${status.className}" style="width:${item.value * 10}%"></div></div>
+          </div>
+        `;
+      }).join("")
+    : `<div class="empty-chart">No category trend data available yet.</div>`;
 }
 
 function renderCategoryBars(visibleReports) {

@@ -300,6 +300,7 @@ textarea {
 }
 
 .dashboard-layout,
+.trend-layout,
 .report-layout,
 .claims-layout,
 .drydock-layout {
@@ -417,6 +418,115 @@ textarea {
   height: 100%;
   border-radius: inherit;
   background: var(--accent);
+}
+
+.chart-box {
+  min-height: 220px;
+  display: grid;
+  align-items: center;
+}
+
+.trend-svg {
+  width: 100%;
+  height: auto;
+  max-height: 260px;
+}
+
+.chart-axis {
+  stroke: #cbd7e3;
+  stroke-width: 1.2;
+}
+
+.line-chart-path {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.line-chart-dot {
+  fill: #fff;
+  stroke: var(--accent);
+  stroke-width: 3;
+}
+
+.column-chart-bar {
+  fill: var(--accent);
+  rx: 6;
+}
+
+.chart-label {
+  fill: var(--muted);
+  font-size: 11px;
+}
+
+.chart-value {
+  fill: var(--ink);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.empty-chart {
+  min-height: 160px;
+  display: grid;
+  place-items: center;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+  padding: 16px;
+}
+
+.pie-chart {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  align-items: center;
+  gap: 14px;
+}
+
+.pie-bg {
+  fill: none;
+  stroke: #e7edf3;
+  stroke-width: 28;
+}
+
+.pie-segment {
+  fill: none;
+  stroke-width: 28;
+  transform: rotate(-90deg);
+  transform-origin: 90px 90px;
+}
+
+.pie-total {
+  fill: var(--ink);
+  font-size: 28px;
+  font-weight: 800;
+}
+
+.pie-caption {
+  fill: var(--muted);
+  font-size: 12px;
+}
+
+.pie-legend {
+  display: grid;
+  gap: 9px;
+  font-size: 13px;
+}
+
+.pie-legend div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pie-legend span {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  flex: 0 0 auto;
 }
 
 .issue-grid,
@@ -974,6 +1084,7 @@ body.requires-login .app-shell {
   }
 
   .dashboard-layout,
+  .trend-layout,
   .report-layout,
   .claims-layout,
   .drydock-layout,
@@ -1004,6 +1115,7 @@ body.requires-login .app-shell {
   .parameter-row,
   .field-entry-grid,
   .ai-card-grid,
+  .pie-chart,
   .planning-form {
     grid-template-columns: 1fr;
   }
